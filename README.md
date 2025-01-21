@@ -1,1 +1,1 @@
-# SPECTRA: Self-supervised Pretraining for CT Representation Extraction
+# SPECTRE: Self-supervised Pretraining for CT Representation Extraction
