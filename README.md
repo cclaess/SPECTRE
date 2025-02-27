@@ -11,7 +11,7 @@ To begin using SPECTRE, follow these steps:
     cd SPECTRE
     ```
 2. Create a `.env` file in the root directory of the project.
-3. Add the following to the `.env` file, replacing `<your_api_key>` with your actual Weights & Biases API key:
+3. Add the following to the `.env` file, replacing `<your_api_key>` with your actual (Weights & Biases)[https://wandb.ai/] API key:
     ```bash
     WANDB_API_KEY=<your_api_key>
     ```
