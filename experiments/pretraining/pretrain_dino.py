@@ -19,9 +19,9 @@ def get_args_parser() -> argparse.ArgumentParser:
     Load arguments from config file. If argument is specified in command line, it will override the value in config file.
     """
     parser = argparse.ArgumentParser(description="Pretrain DINO")
-    parser.add_argument("--config-file", type=str, default="configs/dino_default.yaml", help="path to config file")
+    parser.add_argument("--config_file", type=str, default="configs/dino_default.yaml", help="path to config file")
     parser.add_argument("opts", default=None, nargs=argparse.REMAINDER, help="command line arguments to override config file")
-    parser.add_argument("--output-dir", type=str, default="output", help="output directory to save checkpoints and logs")
+    parser.add_argument("--output_dir", type=str, default="output", help="output directory to save checkpoints and logs")
     return parser
 
 
