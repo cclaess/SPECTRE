@@ -12,7 +12,7 @@ class DINOTransform(Compose):
     def __init__(
             self, 
             input_size: Tuple[int, int, int] = (128, 128, 64), 
-            local_size: Tuple[int, int, int] = (48, 48, 24),
+            local_crop_size: Tuple[int, int, int] = (48, 48, 24),
             num_global_crops: int = 2,
             num_local_crops: int = 8,
         ):
@@ -48,6 +48,6 @@ class DINOTransform(Compose):
                     random_center=True,
                     random_size=True,
                 ),
-                Resized(keys=("image_local",), spatial_size=local_size),
+                Resized(keys=("image_local",), spatial_size=local_crop_size),
             ]
         )

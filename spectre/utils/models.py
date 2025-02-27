@@ -1,26 +1,58 @@
 import math
-from itertools import repeat
-from typing import Tuple, List, Optional, Union
-from collections.abc import Iterable
+from typing import List, Tuple, Optional, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 
-def _ntuple(n):
-    def parse(x):
-        if isinstance(x, Iterable) and not isinstance(x, str):
-            return tuple(x)
-        return tuple(repeat(x, n))
-    return parse
+def deactivate_requires_grad(model: nn.Module):
+    """Deactivates the requires_grad flag for all parameters of a model.
+
+    This has the same effect as permanently executing the model within a `torch.no_grad()`
+    context. Use this method to disable gradient computation and therefore
+    training for a model.
+
+    Examples:
+        >>> backbone = resnet18()
+        >>> deactivate_requires_grad(backbone)
+    """
+    for param in model.parameters():
+        param.requires_grad = False
 
 
-to_1tuple = _ntuple(1)
-to_2tuple = _ntuple(2)
-to_3tuple = _ntuple(3)
-to_4tuple = _ntuple(4)
+def activate_requires_grad(model: nn.Module):
+    """Activates the requires_grad flag for all parameters of a model.
+
+    Use this method to activate gradients for a model (e.g. after deactivating
+    them using `deactivate_requires_grad(...)`).
+
+    Examples:
+        >>> backbone = resnet18()
+        >>> activate_requires_grad(backbone)
+    """
+    for param in model.parameters():
+        param.requires_grad = True
+
+
+@torch.no_grad()
+def update_momentum(model: nn.Module, model_ema: nn.Module, m: float):
+    """Updates parameters of `model_ema` with Exponential Moving Average of `model`
+
+    Momentum encoders are a crucial component fo models such as MoCo or BYOL.
+
+    Examples:
+        >>> backbone = resnet18()
+        >>> projection_head = MoCoProjectionHead()
+        >>> backbone_momentum = copy.deepcopy(moco)
+        >>> projection_head_momentum = copy.deepcopy(projection_head)
+        >>>
+        >>> # update momentum
+        >>> update_momentum(moco, moco_momentum, m=0.999)
+        >>> update_momentum(projection_head, projection_head_momentum, m=0.999)
+    """
+    for model_ema, model in zip(model_ema.parameters(), model.parameters()):
+        model_ema.data = model_ema.data * m + model.data * (1.0 - m)
 
 
 def repeat_token(token: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
@@ -176,37 +208,6 @@ def random_token_mask(
     return idx_keep, idx_mask
 
 
-def deactivate_requires_grad(model: nn.Module):
-    """Deactivates the requires_grad flag for all parameters of a model.
-
-    This has the same effect as permanently executing the model within a `torch.no_grad()`
-    context. Use this method to disable gradient computation and therefore
-    training for a model.
-    """
-    for param in model.parameters():
-        param.requires_grad = False
-
-
-def activate_requires_grad(model: nn.Module):
-    """Activates the requires_grad flag for all parameters of a model.
-
-    Use this method to activate gradients for a model (e.g. after deactivating
-    them using `deactivate_requires_grad(...)`).
-    """
-    for param in model.parameters():
-        param.requires_grad = True
-
-
-@torch.no_grad()
-def update_momentum(model: nn.Module, model_ema: nn.Module, m: float):
-    """Updates parameters of `model_ema` with Exponential Moving Average of `model`
-
-    Momentum encoders are a crucial component fo models such as DINO.
-    """
-    for model_ema, model in zip(model_ema.parameters(), model.parameters()):
-        model_ema.data = model_ema.data * m + model.data * (1.0 - m)
-
-
 def resample_abs_pos_embed(
         posemb,
         new_size: List[int],
@@ -273,98 +274,3 @@ def resample_abs_pos_embed_nhwc(
     posemb = posemb.permute(0, 2, 3, 4, 1).to(orig_dtype)
 
     return posemb
-
-
-def initialize_3d_sine_cosine_positional_embedding(
-    pos_embedding: torch.nn.Parameter, has_class_token: bool
-) -> None:
-    _, seq_length, hidden_dim = pos_embedding.shape
-    grid_size = int((seq_length - int(has_class_token)) ** (1/3))
-    sine_cosine_embedding = get_3d_sine_cosine_positional_embedding(
-        embed_dim=hidden_dim,
-        grid_size=grid_size,
-        cls_token=has_class_token,
-    )
-    pos_embedding.data.copy_(
-        torch.from_numpy(sine_cosine_embedding).float().unsqueeze(0)
-    )
-    pos_embedding.requires_grad = False
-
-
-def get_3d_sine_cosine_positional_embedding(
-    embed_dim: int, grid_size: int, cls_token: bool
-) -> np.ndarray:
-    grid_d = np.arange(grid_size, dtype=np.float32)
-    grid_h = np.arange(grid_size, dtype=np.float32)
-    grid_w = np.arange(grid_size, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h, grid_d)  # Order: W, H, D
-    grid = np.stack(grid, axis=0)
-
-    grid = grid.reshape([3, 1, grid_size, grid_size, grid_size])
-    pos_embed = get_3d_sine_cosine_positional_embedding_from_grid(embed_dim, grid)
-    if cls_token:
-        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
-    return pos_embed
-
-
-def get_3d_sine_cosine_positional_embedding_from_grid(
-    embed_dim: int, grid: np.ndarray
-) -> np.ndarray:
-    """
-    Generates 3D sine-cosine positional embedding from a grid, ensuring unique values.
-
-    Args:
-        embed_dim (int): Embedding dimension.
-        grid (np.ndarray): Grid of shape (3, grid_size, grid_size, grid_size) with x, y, z coordinates.
-
-    Returns:
-        np.ndarray: Positional embedding with shape (grid_size^3, embed_dim).
-    """
-    assert embed_dim % 6 == 0, "Embedding dimension must be divisible by 6."
-
-    # Use one-third of the dimensions for sine and one-third for cosine for each axis
-    div_term = embed_dim // 6
-
-    # Flatten each grid axis
-    grid_d = grid[0].reshape(-1)  # Flattened depth grid
-    grid_h = grid[1].reshape(-1)  # Flattened height grid
-    grid_w = grid[2].reshape(-1)  # Flattened width grid
-
-    emb_d = get_1d_sine_cosine_positional_embedding_from_positions(div_term, grid_d)
-    emb_h = get_1d_sine_cosine_positional_embedding_from_positions(div_term, grid_h)
-    emb_w = get_1d_sine_cosine_positional_embedding_from_positions(div_term, grid_w)
-
-    # Concatenate all sine embeddings followed by cosine embeddings
-    emb_sin = np.concatenate([emb_d[:, :div_term], emb_h[:, :div_term], emb_w[:, :div_term]], axis=1)
-    emb_cos = np.concatenate([emb_d[:, div_term:], emb_h[:, div_term:], emb_w[:, div_term:]], axis=1)
-
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # Combine sine and cosine embeddings
-    return emb
-
-
-def get_1d_sine_cosine_positional_embedding_from_positions(
-    embed_dim: int, pos: np.ndarray[np.float32]
-) -> np.ndarray[np.float32]:
-    """Generates 1D sine-cosine positional embedding from positions.
-
-    Code follows: https://github.com/facebookresearch/mae/blob/main/util/pos_embed.py
-
-    Args:
-        embed_dim: Embedding dimension.
-        pos: Positions to be encoded with shape (N, M).
-    Returns:
-        Positional embedding with shape (N * M, embed_dim).
-    """
-    assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float32)
-    omega /= embed_dim / 2.0
-    omega = 1.0 / 10000**omega  # (embed_dim/2,)
-
-    pos = pos.reshape(-1)  # (N*M,)
-    out = np.einsum("m,d->md", pos, omega)  # (N*M, embed_dim/2), outer product
-
-    emb_sin = np.sin(out)  # (N*M, embed_dim/2)
-    emb_cos = np.cos(out)  # (N*M, embed_dim/2)
-
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (N*M, embed_dim)
-    return emb

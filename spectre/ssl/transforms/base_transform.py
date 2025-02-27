@@ -17,8 +17,8 @@ class BaseTransform(Compose):
                 EnsureChannelFirstd(keys=("image",), channel_dim="no_channel"),
                 ScaleIntensityRanged(
                     keys=("image",), 
-                    a_min=-1300, 
-                    a_max=200, 
+                    a_min=-1000, 
+                    a_max=1000, 
                     b_min=0.0, 
                     b_max=1.0, 
                     clip=True

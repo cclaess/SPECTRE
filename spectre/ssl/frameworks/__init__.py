@@ -1,3 +1,3 @@
-from .DINO import DINO
-from .MAE import MAE
-from .CLIP import CLIP
+from .dino import DINO
+from .mae import MAE
+from .clip import CLIP

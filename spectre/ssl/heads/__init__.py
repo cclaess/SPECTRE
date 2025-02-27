@@ -1,1 +1,1 @@
-from .DINOProjectionHead import DINOProjectionHead
+from .dino_head import DINOProjectionHead

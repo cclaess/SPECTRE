@@ -1,0 +1,35 @@
+train:
+  batch_size_per_gpu: 1024
+  dataset: ct_rate
+  dataset_path: 
+  output_dir: .
+  saveckp_freq: 20
+  seed: 0
+  num_workers: 10
+  cache_dataset: true
+  mixed_precision: fp16
+  log_wandb: true
+optim:
+  epochs: 100
+  weight_decay: 0.04
+  weight_decay_end: 0.4
+  base_lr: 0.004
+  lr: 0.  # will be set after applying scaling rule
+  warmup_epochs: 10
+  min_lr: 1.0e-06
+  clip_grad_norm: 3.0
+  scaling_rule: sqrt_wrt_1024
+  adamw_beta1: 0.9
+  adamw_beta2: 0.999
+model:
+  architecture: vit_base_patch16_128
+  hidden_dim: 2048
+  bottleneck_dim: 256
+  output_dim: 65536
+  momentum_teacher: 0.992
+  momentum_teacher_end: 0.999
+  warmup_teacher_temp: 0.04
+  teacher_temp: 0.04
+  warmup_teacher_temp_epochs: 30
+  student_temp: 0.1
+  center_momentum: 0.9

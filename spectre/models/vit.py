@@ -16,9 +16,9 @@ class PatchEmbed(nn.Module):
 
     def __init__(
             self,
-            img_size: Optional[Union[int, Tuple[int, int, int]]] = 224,
-            patch_size: Union[int, Tuple[int, int, int]] = 16,
-            in_chans: int = 3,
+            img_size: Optional[Union[int, Tuple[int, int, int]]] = (128, 128, 64),
+            patch_size: Union[int, Tuple[int, int, int]] = (16, 16, 8),
+            in_chans: int = 1,
             embed_dim: int = 768,
             norm_layer: Optional[Callable] = None,
             flatten: bool = True,
@@ -71,10 +71,13 @@ class PatchEmbed(nn.Module):
 
 
 class VisionTransformer(VisionTransformerTimm):
+    """ Vision Transformer with 3D Patch Embedding
+    """
     def __init__(
             self, 
-            img_size: Union[int, Tuple[int, int, int]] = 224,
-            patch_size: Union[int, Tuple[int, int, int]] = 16,
+            img_size: Union[int, Tuple[int, int, int]] = (128, 128, 64),
+            patch_size: Union[int, Tuple[int, int, int]] = (16, 16, 8),
+            in_chans: int = 1,
             embed_layer: Callable = PatchEmbed,
             *args, 
             **kwargs
@@ -82,6 +85,7 @@ class VisionTransformer(VisionTransformerTimm):
         super().__init__(
             img_size=img_size, 
             patch_size=patch_size, 
+            in_chans=in_chans,
             embed_layer=embed_layer, 
             *args, 
             **kwargs
@@ -95,9 +99,6 @@ class VisionTransformer(VisionTransformerTimm):
             return_prefix_tokens: bool = False,
             norm: bool = False,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]]]:
-        """ Intermediate layer accessor (NOTE: This is a WIP experiment).
-        Inspired by DINO / DINOv2 interface
-        """
         # take last n blocks if n is an int, if in is a sequence, select by matching indices
         outputs = self._intermediate_layers(x, n)
         if norm:
@@ -115,6 +116,11 @@ class VisionTransformer(VisionTransformerTimm):
         if return_prefix_tokens:
             return tuple(zip(outputs, prefix_tokens))
         return tuple(outputs)
+    
+    def forward(self, x: torch.Tensor, pre_logits: bool = False) -> torch.Tensor:
+        x = self.forward_features(x)
+        x = self.forward_head(x, pre_logits=pre_logits)
+        return x
 
 
 def vit_tiny_patch16_128(*args, **kwargs) -> VisionTransformer:

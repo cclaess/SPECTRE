@@ -1,17 +1,14 @@
 import math
-from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from timm.layers import DropPath, create_aa, create_attn, get_act_layer, get_norm_layer
 from timm.models.resnet import (
     get_padding,
     BasicBlock as BasicBlockTimm,
     Bottleneck as BottleneckTimm,
-    ResNet as ResNetTimm,
 )
 
 

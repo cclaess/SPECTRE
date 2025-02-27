@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from spectre.models import VisionTransformer
-from spectre.ssl.utils import (
+from spectre.utils.models import (
     get_at_index, 
     mask_at_index,
     resample_abs_pos_embed,
