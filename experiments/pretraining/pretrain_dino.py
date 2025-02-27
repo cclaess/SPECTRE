@@ -33,7 +33,6 @@ def main(cfg):
 
     # Initialize accelerator
     accelerator = Accelerator(
-        mixed_precision=cfg.train.mix_precision,
         log_with="wandb" if cfg.train.log_wandb else None,
     )
 
