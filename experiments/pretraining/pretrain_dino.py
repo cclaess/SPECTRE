@@ -59,7 +59,7 @@ def main(cfg):
             config=vars(cfg),
             init_kwargs={
                 "name": "dino-pretrain-" + cfg.model.architecture,
-                "dir": cfg.train.output_dir / "logs",
+                "dir": os.path.join(cfg.train.output_dir, "logs"),
             },
         )
 
