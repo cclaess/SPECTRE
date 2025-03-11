@@ -125,6 +125,29 @@ def set_at_index(
     return torch.scatter(tokens, 1, index, value)
 
 
+def mask_at_index(
+    tokens: torch.Tensor, index: torch.Tensor, mask_token: torch.Tensor
+) -> torch.Tensor:
+    """Copies mask token into the input tensor at the given indices.
+
+    Args:
+        tokens:
+            Tokens tensor with shape (batch_size, sequence_length, dim).
+        index:
+            Index tensor with shape (batch_size, index_length).
+        mask_token:
+            Value tensor with shape (1, 1, dim).
+
+    Returns:
+        Tokens tensor with shape (batch_size, sequence_length, dim) containing
+        the new values.
+
+    """
+    mask = tokens.new_zeros(tokens.shape)
+    mask = set_at_index(mask, index, 1)
+    return (1 - mask) * tokens + mask * mask_token
+
+
 def patchify(images: torch.Tensor, patch_size: Tuple[int, int, int]) -> torch.Tensor:
     """Converts a batch of input images into patches.
 
@@ -274,3 +297,6 @@ def resample_abs_pos_embed_nhwc(
     posemb = posemb.permute(0, 2, 3, 4, 1).to(orig_dtype)
 
     return posemb
+
+
+from lightly.models.modules import MAEDecoderTIMM, MaskedVisionTransformerTIMM
