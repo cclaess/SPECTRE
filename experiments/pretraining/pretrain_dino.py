@@ -167,18 +167,8 @@ def main(cfg):
             optimizer.param_groups[0]["weight_decay"] = weight_decay
 
             # Forward pass
-            print(len(batch["image"]))
-            global_views = [
-                batch["image"].view(-1, 2, *batch["image"].shape[2:])[:, i]
-                for i in range(2)
-            ]
-            local_views = [
-                batch["image_local"].view(-1, 8, *batch["image_local"].shape[2:])[:, i]
-                for i in range(8)
-            ]
-
-            teacher_outputs = [unwrapped_model.forward_teacher(view) for view in global_views]
-            student_outputs = [model(view) for view in global_views + local_views]
+            teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch.values()[:2]]
+            student_outputs = [model(view) for view in batch.values()]
 
             loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
 
