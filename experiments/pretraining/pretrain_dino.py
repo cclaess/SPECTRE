@@ -107,7 +107,7 @@ def main(cfg):
     # Initialize optimizer
     optimizer = AdamW(
         model.parameters(),
-        lr=cfg.train.lr,
+        lr=cfg.optim.lr,
     )
 
     # calculate number of steps for training
