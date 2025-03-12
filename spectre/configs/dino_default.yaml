@@ -7,6 +7,7 @@ train:
   seed: 0
   num_workers: 10
   cache_dataset: true
+  cache_dir: ./cache/monai/
   log_wandb: true
 optim:
   epochs: 100

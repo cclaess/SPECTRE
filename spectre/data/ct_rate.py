@@ -2,22 +2,22 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from monai.data import Dataset, CacheDataset
+from monai.data import Dataset, PersistentDataset
 
 
 class CTRateDataset(Dataset):
     def __init__(
         self, 
-        dataset_path: str, 
+        data_dir: str, 
         include_reports: bool = False, 
         transform: Callable = None
     ):
-        image_paths = Path(dataset_path).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
 
         if include_reports:
             import pandas as pd
             reports = pd.read_csv(os.path.join(
-                dataset_path, "dataset", "radiology_text_reports", "train_reports.csv"
+                data_dir, "dataset", "radiology_text_reports", "train_reports.csv"
             ))
 
             data = [{
@@ -30,19 +30,20 @@ class CTRateDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class CTRateCacheDataset(CacheDataset):
+class CTRateCacheDataset(PersistentDataset):
     def __init__(
         self, 
-        dataset_path: str, 
+        data_dir: str,
+        cache_dir: str,
         include_reports: bool = False, 
         transform: Callable = None
     ):
-        image_paths = Path(dataset_path).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
 
         if include_reports:
             import pandas as pd
             reports = pd.read_csv(os.path.join(
-                dataset_path, "dataset", "radiology_text_reports", "train_reports.csv"
+                data_dir, "dataset", "radiology_text_reports", "train_reports.csv"
             ))
 
             data = [{
@@ -52,4 +53,4 @@ class CTRateCacheDataset(CacheDataset):
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]
 
-        super().__init__(data=data, transform=transform)
+        super().__init__(data=data, transform=transform, cache_dir=cache_dir)

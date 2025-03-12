@@ -70,6 +70,7 @@ def main(cfg):
         cfg.train.dataset_path,
         include_reports=False,
         cache_dataset=cfg.train.cache_dataset,
+        cache_dir=cfg.train.cache_dir,
         transform=DINOTransform(),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
