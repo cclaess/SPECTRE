@@ -164,6 +164,7 @@ def main(cfg):
             optimizer.param_groups[0]["weight_decay"] = weight_decay
 
             # Forward pass
+            print(len(batch["image"]))
             global_views = [
                 batch["image"].view(-1, 2, *batch["image"].shape[2:])[:, i]
                 for i in range(2)
