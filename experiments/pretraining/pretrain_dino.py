@@ -97,11 +97,11 @@ def main(cfg):
     # Initialize criterion
     criterion = DINOLoss(
         output_dim=cfg.model.output_dim,
-        warmup_teacher_temp=cfg.loss.warmup_teacher_temp,
-        teacher_temp=cfg.loss.teacher_temp,
-        warmup_teacher_temp_epochs=cfg.loss.warmup_teacher_temp_epochs,
-        student_temp=cfg.loss.student_temp,
-        center_momentum=cfg.loss.center_momentum,
+        warmup_teacher_temp=cfg.model.warmup_teacher_temp,
+        teacher_temp=cfg.model.teacher_temp,
+        warmup_teacher_temp_epochs=cfg.model.warmup_teacher_temp_epochs,
+        student_temp=cfg.model.student_temp,
+        center_momentum=cfg.model.center_momentum,
     )
 
     # Initialize optimizer
