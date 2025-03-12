@@ -10,7 +10,7 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
 )
 
-from spectre.ssl.transforms import SWSpatialCropSamplesd
+from spectre.transforms import SWSpatialCropSamplesd
 
 
 class CLIPTransform(Compose):
