@@ -188,7 +188,7 @@ class VisionTransformer(nn.Module):
         # this fn left here for compat with downstream users
         if isinstance(m, nn.Linear):
             nn.init.trunc_normal_(m.weight, std=.02)
-        if m.bias is not None:
+        if hasattr(m, 'bias') and m.bias is not None:
             nn.init.zeros_(m.bias)
         elif hasattr(m, 'init_weights'):
             m.init_weights()
@@ -282,7 +282,7 @@ class VisionTransformer(nn.Module):
             return_prefix_tokens: bool = False,
             norm: bool = False,
             stop_early: bool = False,
-            output_fmt: str = 'NCHW',
+            output_fmt: str = 'NCHWD',
             intermediates_only: bool = False,
     ) -> Union[List[torch.Tensor], Tuple[torch.Tensor, List[torch.Tensor]]]:
         """ Forward features that returns intermediates.
