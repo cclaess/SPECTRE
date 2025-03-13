@@ -347,3 +347,69 @@ def resample_patch_embed(
     patch_embed = v_resample_kernel(patch_embed)
     patch_embed = patch_embed.to(orig_dtype)
     return patch_embed
+
+
+def feature_take_indices(
+        num_features: int,
+        indices: Optional[Union[int, List[int]]] = None,
+        as_set: bool = False,
+) -> Tuple[List[int], int]:
+    """ Determine the absolute feature indices to 'take' from.
+
+    Note: This function can be called in forward() so must be torchscript compatible,
+    which requires some incomplete typing and workaround hacks.
+
+    Args:
+        num_features: total number of features to select from
+        indices: indices to select,
+          None -> select all
+          int -> select last n
+          list/tuple of int -> return specified (-ve indices specify from end)
+        as_set: return as a set
+
+    Returns:
+        List (or set) of absolute (from beginning) indices, Maximum index
+    """
+    if indices is None:
+        indices = num_features  # all features if None
+
+    if isinstance(indices, int):
+        # convert int -> last n indices
+        assert 0 < indices <= num_features, f'last-n ({indices}) is out of range (1 to {num_features})'
+        take_indices = [num_features - indices + i for i in range(indices)]
+    else:
+        take_indices: List[int] = []
+        for i in indices:
+            idx = num_features + i if i < 0 else i
+            assert 0 <= idx < num_features, f'feature index {idx} is out of range (0 to {num_features - 1})'
+            take_indices.append(idx)
+
+    if not torch.jit.is_scripting() and as_set:
+        return set(take_indices), max(take_indices)
+
+    return take_indices, max(take_indices)
+
+
+def global_pool_nlc(
+        x: torch.Tensor,
+        pool_type: str = 'token',
+        num_prefix_tokens: int = 1,
+        reduce_include_prefix: bool = False,
+):
+    if not pool_type:
+        return x
+
+    if pool_type == 'token':
+        x = x[:, 0]  # class token
+    else:
+        x = x if reduce_include_prefix else x[:, num_prefix_tokens:]
+        if pool_type == 'avg':
+            x = x.mean(dim=1)
+        elif pool_type == 'avgmax':
+            x = 0.5 * (x.amax(dim=1) + x.mean(dim=1))
+        elif pool_type == 'max':
+            x = x.amax(dim=1)
+        else:
+            assert not pool_type, f'Unknown pool type {pool_type}'
+
+    return x
