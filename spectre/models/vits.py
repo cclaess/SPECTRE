@@ -188,8 +188,8 @@ class VisionTransformer(nn.Module):
         # this fn left here for compat with downstream users
         if isinstance(m, nn.Linear):
             nn.init.trunc_normal_(m.weight, std=.02)
-        if hasattr(m, 'bias') and m.bias is not None:
-            nn.init.zeros_(m.bias)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
         elif hasattr(m, 'init_weights'):
             m.init_weights()
 
