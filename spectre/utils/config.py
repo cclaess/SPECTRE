@@ -7,12 +7,28 @@ from spectre.utils import distributed, utils
 
 
 def apply_scaling_rules_to_cfg(cfg):
-    if cfg.optim.scaling_rule == "sqrt_wrt_1024":
-        base_lr = cfg.optim.base_lr
-        cfg.optim.lr = base_lr
-        cfg.optim.lr *= math.sqrt(cfg.train.batch_size_per_gpu * distributed.get_global_size() / 1024.0)
+    
+    base_lr = cfg.optim.base_lr
+    cfg.optim.lr = base_lr
+    
+    if cfg.optim.scaling_rule == "constant":
+        return cfg
+    
+    try:
+        scaling_type, _, ref_batch_size = cfg.optim.scaling_rule.split("_wrt_")
+        ref_batch_size = float(ref_batch_size)
+    except ValueError:
+        raise NotImplementedError(f"Unknown scaling rule: {cfg.optim.scaling_rule}")
+    
+    scale_factor = cfg.train.batch_size_per_gpu * distributed.get_global_size() / ref_batch_size
+    
+    if scaling_type == "sqrt":
+        cfg.optim.lr *= math.sqrt(scale_factor)
+    elif scaling_type == "linear":
+        cfg.optim.lr *= scale_factor
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"Unsupported scaling type: {scaling_type}")
+    
     return cfg
 
 
