@@ -237,8 +237,7 @@ def resample_abs_pos_embed(
         new_size: List[int],
         old_size: List[int],
         num_prefix_tokens: int = 1,
-        interpolation: str = 'bicubic',
-        antialias: bool = True,
+        interpolation: str = 'trilinear',
 ):
     # sort out sizes, assume square if old size not provided
     num_pos_tokens = posemb.shape[1]
@@ -256,7 +255,7 @@ def resample_abs_pos_embed(
     orig_dtype = posemb.dtype
     posemb = posemb.float()  # interpolate needs float32
     posemb = posemb.reshape(1, old_size[0], old_size[1], old_size[2], -1).permute(0, 4, 1, 2, 3)
-    posemb = F.interpolate(posemb, size=new_size, mode=interpolation, antialias=antialias)
+    posemb = F.interpolate(posemb, size=new_size, mode=interpolation)
     posemb = posemb.permute(0, 2, 3, 4, 1).reshape(1, -1, embed_dim)
     posemb = posemb.to(orig_dtype)
 
@@ -270,8 +269,7 @@ def resample_abs_pos_embed(
 def resample_abs_pos_embed_nhwdc(
         posemb: torch.Tensor,
         new_size: List[int],
-        interpolation: str = 'bicubic',
-        antialias: bool = True,
+        interpolation: str = 'trilinear',
 ):
     if new_size[0] == posemb.shape[-4] and new_size[1] == posemb.shape[-3] and new_size[2] == posemb.shape[-2]:
         return posemb
@@ -279,7 +277,7 @@ def resample_abs_pos_embed_nhwdc(
     orig_dtype = posemb.dtype
     posemb = posemb.float()
     posemb = posemb.reshape(1, posemb.shape[-4], posemb.shape[-3], posemb.shape[-2], posemb.shape[-1]).permute(0, 4, 1, 2, 3)
-    posemb = F.interpolate(posemb, size=new_size, mode=interpolation, antialias=antialias)
+    posemb = F.interpolate(posemb, size=new_size, mode=interpolation)
     posemb = posemb.permute(0, 2, 3, 4, 1).to(orig_dtype)
 
     return posemb
@@ -289,7 +287,6 @@ def resample_patch_embed(
         patch_embed,
         new_size: List[int],
         interpolation: str = 'trilinear',
-        antialias: bool = True,
 ):
     """Resample the weights of the patch embedding kernel to target resolution.
     We resample the patch embedding kernel by approximately inverting the effect
@@ -305,7 +302,6 @@ def resample_patch_embed(
         patch_embed: original parameter to be resized.
         new_size (tuple[int, int, int]): target shape (depth, height, width).
         interpolation (str): interpolation for resize
-        antialias (bool): use anti-aliasing filter in resize
     Returns:
         Resized patch embedding kernel.
     """
@@ -324,7 +320,7 @@ def resample_patch_embed(
     def resize(x_np, _new_size):
         x_tf = torch.Tensor(x_np)[None, None, ...]
         x_upsampled = F.interpolate(
-            x_tf, size=_new_size, mode=interpolation, antialias=antialias)[0, 0, ...].numpy()
+            x_tf, size=_new_size, mode=interpolation)[0, 0, ...].numpy()
         return x_upsampled
 
     def get_resize_mat(_old_size, _new_size):
