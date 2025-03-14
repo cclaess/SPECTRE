@@ -1,5 +1,6 @@
 import os
 import argparse
+from itertools import chain
 
 from torch.optim import AdamW
 from accelerate import Accelerator
@@ -181,11 +182,13 @@ def main(cfg):
             # Update model
             if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
                 accelerator.clip_grad_norm_(
-                    unwrapped_model.student_backbone.parameters(), cfg.optim.clip_grad_norm
+                    chain(
+                        unwrapped_model.student_backbone.parameters(), 
+                        unwrapped_model.student_head.parameters(),
+                    ),
+                    cfg.optim.clip_grad_norm
                 )
-                accelerator.clip_grad_norm_(
-                    unwrapped_model.student_head.parameters(), cfg.optim.clip_grad_norm
-                )
+
             unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
             optimizer.step()
 
