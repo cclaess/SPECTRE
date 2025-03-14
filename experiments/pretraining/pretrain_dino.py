@@ -150,7 +150,12 @@ def main(cfg):
 
             print(batch.keys())
             print(type(batch["image"]))
-            print(batch["image"])
+            print(batch["image"].shape)
+            print(type(batch["global_crops"]))
+            try:
+                print(batch["global_crops"].shape)
+            except:
+                print(len(batch["global_crops"]))
             optimizer.zero_grad()
 
             # Update learning rate
