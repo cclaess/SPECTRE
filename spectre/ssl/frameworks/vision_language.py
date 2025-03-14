@@ -10,14 +10,15 @@ Hamamci et al., "Developing Generalist Foundation Models from a Multimodal Datas
 https://arxiv.org/abs/2403.17834
 """
 import math
+from typing import Tuple
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from transformers import AutoTokenizer
 
 from spectre.models.vits import VisionTransformer, FeatureVisionTransformer
 from spectre.models.text_encoders import GeneralTextEncoder
-from typing import Union, Tuple
-from transformers import AutoModel, AutoTokenizer
+
 
 class CLIP(nn.Module):
     def __init__(
@@ -45,8 +46,6 @@ class CLIP(nn.Module):
 
         text_features = self.text_backbone(texts)
         return image_features, text_features
-    
-
 
 
 class SigLIP3D(nn.Module):
