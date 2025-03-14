@@ -51,21 +51,29 @@ class DINOProjectionHead(nn.Module):
     ):  
         super().__init__()
 
-        bn = nn.BatchNorm1d(hidden_dim) if batch_norm else None
-
         blocks = [
-            (input_dim, hidden_dim, bn, nn.GELU()),
-            (hidden_dim, hidden_dim, bn, nn.GELU()),
+            (
+                input_dim,
+                hidden_dim,
+                nn.BatchNorm1d(hidden_dim) if batch_norm else None,
+                nn.GELU(),
+            ),
+            (
+                hidden_dim,
+                hidden_dim,
+                nn.BatchNorm1d(hidden_dim) if batch_norm else None,
+                nn.GELU(),
+            ),
             (hidden_dim, bottleneck_dim, None, None),
         ]
 
         layers: List[nn.Module] = []
         for block in blocks:
-            in_dim, out_dim, batch_norm, non_linearity, *bias = block
-            use_bias = bias[0] if bias else not bool(batch_norm)
+            in_dim, out_dim, bn, non_linearity, *bias = block
+            use_bias = bias[0] if bias else not bool(bn)
             layers.append(nn.Linear(in_dim, out_dim, bias=use_bias))
-            if batch_norm:
-                layers.append(batch_norm)
+            if bn:
+                layers.append(bn)
             if non_linearity:
                 layers.append(non_linearity)
         self.layers = nn.Sequential(*layers)
