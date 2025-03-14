@@ -7,7 +7,7 @@ from spectre.utils import distributed, utils
 
 
 def apply_scaling_rules_to_cfg(cfg):
-    
+
     base_lr = cfg.optim.base_lr
     cfg.optim.lr = base_lr
     
@@ -15,7 +15,7 @@ def apply_scaling_rules_to_cfg(cfg):
         return cfg
     
     try:
-        scaling_type, _, ref_batch_size = cfg.optim.scaling_rule.split("_wrt_")
+        scaling_type, ref_batch_size = cfg.optim.scaling_rule.split("_wrt_")
         ref_batch_size = float(ref_batch_size)
     except ValueError:
         raise NotImplementedError(f"Unknown scaling rule: {cfg.optim.scaling_rule}")
