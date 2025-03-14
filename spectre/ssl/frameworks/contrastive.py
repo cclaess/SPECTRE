@@ -39,18 +39,10 @@ class DINO(nn.Module):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.student_backbone(x, pre_logits=True).flatten(start_dim=1)
-
-        # Debugging print
-        print("student backbone output shape: ", x.shape)
-
         x = self.student_head(x)
         return x
     
     def forward_teacher(self, x: torch.Tensor) -> torch.Tensor:
         x = self.teacher_backbone(x, pre_logits=True).flatten(start_dim=1)
-
-        # Debugging print
-        print("teacher backbone output shape: ", x.shape)
-        
         x = self.teacher_head(x)
         return x
