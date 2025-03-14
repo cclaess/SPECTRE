@@ -85,6 +85,7 @@ def main(cfg):
         and cfg.model.architecture.startswith("vit")
     ):
         backbone = models.__dict__[cfg.model.architecture](
+            num_classes=0,
             dynamic_img_size=True,
         )
         embed_dim = backbone.embed_dim
