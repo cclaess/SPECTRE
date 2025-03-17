@@ -41,6 +41,7 @@ class MAE(nn.Module):
         self.decoder = MAEDecoder(
             num_patches=backbone.patch_embed.num_patches,
             patch_size=self.patch_size,
+            in_chans=backbone.patch_embed.proj.in_channels,
             embed_dim=backbone.embed_dim,
             decoder_embed_dim=decoder_dim,
             decoder_depth=decoder_depth,

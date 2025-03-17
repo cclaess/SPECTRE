@@ -1,9 +1,11 @@
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Block
+
+from spectre.utils.utils import to_3tuple
 
 
 class MAEDecoder(nn.Module):
@@ -33,8 +35,8 @@ class MAEDecoder(nn.Module):
     def __init__(
         self,
         num_patches: int,
-        patch_size: int,
-        in_chans: int = 3,
+        patch_size: Union[int, Tuple[int, int, int]],
+        in_chans: int = 1,
         embed_dim: int = 1024,
         decoder_embed_dim: int = 512,
         decoder_depth: int = 8,
@@ -46,14 +48,13 @@ class MAEDecoder(nn.Module):
         mask_token: Optional[nn.Parameter] = None,
     ):
         super().__init__()
-
+        self.patch_size = to_3tuple(patch_size)
         self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
         self.mask_token = (
             nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
             if mask_token is None
             else mask_token
         )
-
         # positional encoding of the decoder
         self.decoder_pos_embed = nn.Parameter(
             torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False
@@ -76,7 +77,7 @@ class MAEDecoder(nn.Module):
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(
-            decoder_embed_dim, patch_size**3 * in_chans, bias=True
+            decoder_embed_dim, patch_size[0] * patch_size[1] * patch_size[2] * in_chans, bias=True
         )  # decoder to patch
 
         self._initialize_weights()
@@ -156,7 +157,7 @@ class MAEDecoder(nn.Module):
         # )
         self.apply(self._init_weights)
 
-    def _init_weights(module: nn.Module) -> None:
+    def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             nn.init.xavier_uniform_(module.weight)
             if isinstance(module, nn.Linear) and module.bias is not None:
