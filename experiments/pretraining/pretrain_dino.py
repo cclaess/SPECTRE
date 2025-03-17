@@ -46,6 +46,10 @@ def get_args_parser() -> argparse.ArgumentParser:
 def main(cfg):
     """
     Main function to run pretraining.
+
+        
+    Args:
+        cfg: Configuration object containing all hyperparameters and settings.
     """
     # Initialize accelerator
     accelerator = Accelerator(
@@ -67,7 +71,7 @@ def main(cfg):
         )
 
     # Get dataloader
-    data_Loader = get_dataloader(
+    data_loader = get_dataloader(
         cfg.train.dataset,
         cfg.train.dataset_path,
         include_reports=False,
@@ -119,9 +123,9 @@ def main(cfg):
     )
 
     # calculate number of steps for training
-    num_steps = cfg.optim.epochs * len(data_Loader) // accelerator.num_processes
+    num_steps = cfg.optim.epochs * len(data_loader) // accelerator.num_processes
     num_warmup_steps = (
-        cfg.optim.warmup_epochs * len(data_Loader) // accelerator.num_processes
+        cfg.optim.warmup_epochs * len(data_loader) // accelerator.num_processes
     )
 
     # Initialize learning rate scheduler
@@ -134,9 +138,9 @@ def main(cfg):
     )
 
     # Prepare model, data, and optimizer for training
-    model, data_Loader, criterion, optimizer, lr_scheduler = accelerator.prepare(
+    model, data_loader, criterion, optimizer, lr_scheduler = accelerator.prepare(
         model,
-        data_Loader,
+        data_loader,
         criterion,
         optimizer,
         lr_scheduler,
@@ -147,7 +151,7 @@ def main(cfg):
     global_step: int = 0
     for epoch in range(cfg.optim.epochs):
         model.train()
-        for batch in data_Loader:
+        for batch in data_loader:
 
             optimizer.zero_grad()
 
