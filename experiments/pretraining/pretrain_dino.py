@@ -120,6 +120,7 @@ def main(cfg):
     optimizer = AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
+        betas=(cfg.optim.beta1, cfg.optim.beta2),
     )
 
     # calculate number of steps for training
