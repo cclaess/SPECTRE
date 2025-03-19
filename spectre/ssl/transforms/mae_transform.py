@@ -47,7 +47,7 @@ class MAETransform(Compose):
                 # Do a random resized crop
                 RandSpatialCropd(
                     keys=("image",),
-                    roi_size=tuple(int(sz * 0.2) for sz in input_size),
+                    roi_size=tuple(int(sz * 0.34) for sz in input_size),  # 0.34 = (0.2 ** 2) ** (1/3)
                     max_roi_size=input_size,
                     random_center=True,
                     random_size=True,
@@ -55,3 +55,26 @@ class MAETransform(Compose):
                 Resized(keys=("image",), spatial_size=input_size),
             ]
         )
+
+
+if __name__ == "__main__":
+
+    # Save some example data after transforming it.
+    import os
+    import SimpleITK as sitk
+
+    data = {"image": r"data/test_data/train_1_a_1.nii.gz"}
+    transform = MAETransform()
+    transformed_data = transform(data)
+
+    # Save the different crops to a folder for visualization.
+    output_dir = r"data/test_data/mae_transform_output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    for i, patch in enumerate(transformed_data):
+
+        # Save the crops
+        patch_img = sitk.GetImageFromArray(patch["image"].squeeze(0).numpy())
+        patch_img.SetSpacing((1.5, 0.75, 0.75))
+        patch_path = os.path.join(output_dir, f"{i}_crop.nii.gz")
+        sitk.WriteImage(patch_img, patch_path)
