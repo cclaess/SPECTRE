@@ -4,10 +4,65 @@ from typing import Tuple, Union, Callable, Sequence, Literal, Optional, Type, Se
 import torch
 import torch.nn as nn
 from timm.layers import PatchDropout, AttentionPoolLatent
-from timm.models.vision_transformer import Block, Mlp
+from timm.models.vision_transformer import LayerScale, DropPath, Mlp
 
 from spectre.utils.models import resample_abs_pos_embed, feature_take_indices, global_pool_nlc
-from spectre.models.layers import PatchEmbed
+from spectre.models.layers import PatchEmbed, Attention
+
+
+class Block(nn.Module):
+    def __init__(
+            self,
+            dim: int,
+            num_heads: int,
+            attn_mode: str = 'mha',
+            q_proj_dim: Optional[int] = None,
+            kv_proj_dim: Optional[int] = None,
+            mlp_ratio: float = 4.,
+            qkv_bias: bool = False,
+            qk_norm: bool = False,
+            proj_bias: bool = True,
+            proj_drop: float = 0.,
+            attn_drop: float = 0.,
+            init_values: Optional[float] = None,
+            drop_path: float = 0.,
+            act_layer: Type[nn.Module] = nn.GELU,
+            norm_layer: Type[nn.Module] = nn.LayerNorm,
+            mlp_layer: Type[nn.Module] = Mlp,
+    ) -> None:
+        super().__init__()
+        self.norm1 = norm_layer(dim)
+        self.attn = Attention(
+            dim,
+            num_heads=num_heads,
+            mode=attn_mode,
+            q_proj_dim=q_proj_dim,
+            kv_proj_dim=kv_proj_dim,
+            qkv_bias=qkv_bias,
+            qk_norm=qk_norm,
+            proj_bias=proj_bias,
+            attn_drop=attn_drop,
+            proj_drop=proj_drop,
+            norm_layer=norm_layer,
+        )
+        self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+        self.norm2 = norm_layer(dim)
+        self.mlp = mlp_layer(
+            in_features=dim,
+            hidden_features=int(dim * mlp_ratio),
+            act_layer=act_layer,
+            bias=proj_bias,
+            drop=proj_drop,
+        )
+        self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
+        x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
+        return x
 
 
 class VisionTransformer(nn.Module):
@@ -23,6 +78,9 @@ class VisionTransformer(nn.Module):
             embed_dim: int = 768,
             depth: int = 12,
             num_heads: int = 12,
+            attn_mode: str = 'mha',
+            q_proj_dim: Optional[int] = None,
+            kv_proj_dim: Optional[int] = None,
             mlp_ratio: float = 4.,
             qkv_bias: bool = True,
             qk_norm: bool = False,
@@ -60,6 +118,9 @@ class VisionTransformer(nn.Module):
             embed_dim: Transformer embedding dimension.
             depth: Depth of transformer.
             num_heads: Number of attention heads.
+            attn_mode: Attention mode ('mha', 'mqa', 'mla').
+            q_proj_dim: Query projection dimension for 'mla' mode.
+            kv_proj_dim: Key, value projection dimension for 'mla' mode.
             mlp_ratio: Ratio of mlp hidden dim to embedding dim.
             qkv_bias: Enable bias for qkv projections if True.
             init_values: Layer-scale init values (layer-scale enabled if not None).
@@ -140,6 +201,9 @@ class VisionTransformer(nn.Module):
             block_fn(
                 dim=embed_dim,
                 num_heads=num_heads,
+                mode=attn_mode,
+                q_proj_dim=q_proj_dim,
+                kv_proj_dim=kv_proj_dim,
                 mlp_ratio=mlp_ratio,
                 qkv_bias=qkv_bias,
                 qk_norm=qk_norm,
