@@ -47,7 +47,6 @@ def main(cfg):
     """
     Main function to run pretraining.
 
-        
     Args:
         cfg: Configuration object containing all hyperparameters and settings.
     """
@@ -236,4 +235,12 @@ if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
     cfg = setup(args, default_config_dino)
+
+    print(cfg.train.saveckp_freq)
+    print(type(cfg.train.saveckp_freq))
+
+    print(20 % cfg.train.saveckp_freq == 0)
+
+    import sys
+    sys.exit(0)
     main(cfg)
