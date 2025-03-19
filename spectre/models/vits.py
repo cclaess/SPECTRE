@@ -201,7 +201,7 @@ class VisionTransformer(nn.Module):
             block_fn(
                 dim=embed_dim,
                 num_heads=num_heads,
-                mode=attn_mode,
+                attn_mode=attn_mode,
                 q_proj_dim=q_proj_dim,
                 kv_proj_dim=kv_proj_dim,
                 mlp_ratio=mlp_ratio,
