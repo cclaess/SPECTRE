@@ -94,12 +94,11 @@ class DINOv2(nn.Module):
 
         buffer_tensor = patch_tokens_global.new_zeros(
             upperbound, patch_tokens_global.shape[-1]).as_tensor()
-        torch.index_select(
+        buffer_tensor[:mask_indices.shape[0]].copy_(torch.index_select(
             patch_tokens_global.flatten(0, 1),
             dim=0,
             index=mask_indices,
-            out=buffer_tensor[:mask_indices.shape[0]],
-        )
+        ))
 
         cls_tokens_global_after_head = self.student_head_dino(cls_token_global)
         patch_tokens_global_after_head = self.student_head_ibot(buffer_tensor)[
