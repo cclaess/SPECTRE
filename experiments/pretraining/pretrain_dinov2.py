@@ -223,7 +223,9 @@ def main(cfg):
                 epoch=epoch,
             )
 
-            koleo_loss = sum(criterion_koleo(p) for p in student_cls_tokens_global.chunk(2, dim=0))
+            koleo_loss = sum(
+                criterion_koleo(p.as_tensor()) for p in student_cls_tokens_global.chunk(2, dim=0)
+            )
 
             ibot_loss = criterion_ibot.forward_masked(
                 teacher_patch_tokens_global,
