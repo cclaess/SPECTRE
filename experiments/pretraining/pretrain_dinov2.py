@@ -88,7 +88,7 @@ def main(cfg):
     # Get dataloader
     collate_fn = partial(
         extended_collate, 
-        mask_ratio_tuple=(cfg.model.mask_ratio_min, cfg.model.mask_ratio_max), 
+        mask_ratio=(cfg.model.mask_ratio_min, cfg.model.mask_ratio_max), 
         mask_probability=cfg.model.mask_probability, 
         n_tokens=backbone.patch_embed.num_patches,
         mask_generator=MaskingGenerator(
