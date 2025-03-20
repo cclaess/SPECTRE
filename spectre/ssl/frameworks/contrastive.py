@@ -92,7 +92,8 @@ class DINOv2(nn.Module):
         patch_tokens_global = x_global[:, 1:]
         cls_token_local = x_local[:, 0]
 
-        buffer_tensor = patch_tokens_global.new_zeros(upperbound, patch_tokens_global.shape[-1])
+        buffer_tensor = patch_tokens_global.new_zeros(
+            upperbound, patch_tokens_global.shape[-1]).as_tensor()
         torch.index_select(
             patch_tokens_global.flatten(0, 1),
             dim=0,
@@ -118,7 +119,8 @@ class DINOv2(nn.Module):
         cls_tokens = x[:, 0]
         patch_tokens = x[:, 1:]
 
-        buffer_tensor = patch_tokens.new_zeros(upperbound, patch_tokens.shape[-1])
+        buffer_tensor = patch_tokens.new_zeros(
+            upperbound, patch_tokens.shape[-1]).as_tensor()
         torch.index_select(
             patch_tokens.flatten(0, 1),
             dim=0,
