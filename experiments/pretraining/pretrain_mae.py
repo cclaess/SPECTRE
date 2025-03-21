@@ -51,6 +51,7 @@ def main(cfg):
     """
     # Initialize accelerator
     accelerator = Accelerator(
+        gradient_accumulation_steps=cfg.train.grad_accum_steps,
         log_with="wandb" if cfg.train.log_wandb else None,
     )
 
@@ -149,23 +150,25 @@ def main(cfg):
             # Update learning rate
             lr_scheduler.step()
 
-            # Forward pass
-            outputs, targets = model(batch["image"])
-            loss = criterion(outputs, targets)
+            with accelerator.accumulate(model):
 
-            # Backward pass
-            accelerator.backward(loss)
+                # Forward pass
+                outputs, targets = model(batch["image"])
+                loss = criterion(outputs, targets)
 
-            # print all parameters that have no gradient but require grad
-            for name, param in unwrapped_model.named_parameters():
-                if param.requires_grad and param.grad is None:
-                    print(name)
+                # Backward pass
+                accelerator.backward(loss)
 
-            # Update model
-            if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
-                accelerator.clip_grad_norm_(unwrapped_model.parameters(), cfg.optim.clip_grad_norm)
+                # print all parameters that have no gradient but require grad
+                for name, param in unwrapped_model.named_parameters():
+                    if param.requires_grad and param.grad is None:
+                        print(name)
 
-            optimizer.step()
+                # Update model
+                if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(unwrapped_model.parameters(), cfg.optim.clip_grad_norm)
+
+                optimizer.step()
 
             # Log loss, lr, and weight decay
             if global_step % cfg.train.log_freq == 0:

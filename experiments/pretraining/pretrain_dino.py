@@ -52,6 +52,7 @@ def main(cfg):
     """
     # Initialize accelerator
     accelerator = Accelerator(
+        gradient_accumulation_steps=cfg.train.grad_accum_steps,
         log_with="wandb" if cfg.train.log_wandb else None,
     )
 
@@ -177,27 +178,29 @@ def main(cfg):
             )
             optimizer.param_groups[0]["weight_decay"] = weight_decay
 
-            # Forward pass
-            teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch["global_crops"]]
-            student_outputs = [model(view) for view in batch["global_crops"] + batch["local_crops"]]
+            with accelerator.accumulate(model):
 
-            loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
+                # Forward pass
+                teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch["global_crops"]]
+                student_outputs = [model(view) for view in batch["global_crops"] + batch["local_crops"]]
 
-            # Backward pass
-            accelerator.backward(loss)
+                loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
 
-            # Update model
-            if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
-                accelerator.clip_grad_norm_(
-                    chain(
-                        unwrapped_model.student_backbone.parameters(), 
-                        unwrapped_model.student_head.parameters(),
-                    ),
-                    cfg.optim.clip_grad_norm
-                )
+                # Backward pass
+                accelerator.backward(loss)
 
-            unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
-            optimizer.step()
+                # Update model
+                if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(
+                        chain(
+                            unwrapped_model.student_backbone.parameters(), 
+                            unwrapped_model.student_head.parameters(),
+                        ),
+                        cfg.optim.clip_grad_norm
+                    )
+
+                unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
+                optimizer.step()
 
             # Log loss, lr, and weight decay
             if global_step % cfg.train.log_freq == 0:

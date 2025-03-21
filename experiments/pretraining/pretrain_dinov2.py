@@ -54,6 +54,7 @@ def main(cfg):
     """
     # Initialize accelerator
     accelerator = Accelerator(
+        gradient_accumulation_steps=cfg.train.grad_accum_steps,
         log_with="wandb" if cfg.train.log_wandb else None,
     )
 
@@ -198,62 +199,64 @@ def main(cfg):
             )
             optimizer.param_groups[0]["weight_decay"] = weight_decay
 
-            # Forward pass
-            teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
-                global_crops=batch["global_crops"], 
-                mask_indices=batch["mask_indices"], 
-                upperbound=batch["upperbound"]
-            )
-            student_cls_tokens_global, student_patch_tokens_global, student_cls_tokens_local = model(
-                global_crops=batch["global_crops"], 
-                local_crops=batch["local_crops"], 
-                mask_indices=batch["mask_indices"], 
-                upperbound=batch["upperbound"]
-            )
+            with accelerator.accumulate(model):
 
-            dino_local_crops_loss = criterion_dino(
-                student_cls_tokens_local.chunk(8, dim=0),
-                teacher_cls_tokens_global.chunk(2, dim=0),
-                epoch=epoch,
-            )
-            dino_global_crops_loss = criterion_dino(
-                student_cls_tokens_global.chunk(2, dim=0),
-                teacher_cls_tokens_global.chunk(2, dim=0),
-                epoch=epoch,
-            )
-
-            koleo_loss = sum(
-                criterion_koleo(p.as_tensor()) for p in student_cls_tokens_global.chunk(2, dim=0)
-            )
-
-            ibot_loss = criterion_ibot.forward_masked(
-                teacher_patch_tokens_global,
-                student_patch_tokens_global,
-                mask=batch["masks"],
-                epoch=epoch,
-            )
-
-            loss = cfg.model.dino_loss_weight * (dino_local_crops_loss + dino_global_crops_loss) + \
-                cfg.model.koleo_loss_weight * koleo_loss + \
-                cfg.model.ibot_loss_weight * ibot_loss
-
-            # Backward pass
-            accelerator.backward(loss)
-
-            # Update model
-            if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
-                accelerator.clip_grad_norm_(
-                    chain(
-                        unwrapped_model.student_backbone.parameters(), 
-                        unwrapped_model.student_head_dino.parameters(),
-                        unwrapped_model.student_head_ibot.parameters(),
-                    ),
-                    cfg.optim.clip_grad_norm
+                # Forward pass
+                teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
+                    global_crops=batch["global_crops"], 
+                    mask_indices=batch["mask_indices"], 
+                    upperbound=batch["upperbound"]
+                )
+                student_cls_tokens_global, student_patch_tokens_global, student_cls_tokens_local = model(
+                    global_crops=batch["global_crops"], 
+                    local_crops=batch["local_crops"], 
+                    mask_indices=batch["mask_indices"], 
+                    upperbound=batch["upperbound"]
                 )
 
-            unwrapped_model.student_head_dino.cancel_last_layer_gradients(epoch)
-            unwrapped_model.student_head_ibot.cancel_last_layer_gradients(epoch)
-            optimizer.step()
+                dino_local_crops_loss = criterion_dino(
+                    student_cls_tokens_local.chunk(8, dim=0),
+                    teacher_cls_tokens_global.chunk(2, dim=0),
+                    epoch=epoch,
+                )
+                dino_global_crops_loss = criterion_dino(
+                    student_cls_tokens_global.chunk(2, dim=0),
+                    teacher_cls_tokens_global.chunk(2, dim=0),
+                    epoch=epoch,
+                )
+
+                koleo_loss = sum(
+                    criterion_koleo(p.as_tensor()) for p in student_cls_tokens_global.chunk(2, dim=0)
+                )
+
+                ibot_loss = criterion_ibot.forward_masked(
+                    teacher_patch_tokens_global,
+                    student_patch_tokens_global,
+                    mask=batch["masks"],
+                    epoch=epoch,
+                )
+
+                loss = cfg.model.dino_loss_weight * (dino_local_crops_loss + dino_global_crops_loss) + \
+                    cfg.model.koleo_loss_weight * koleo_loss + \
+                    cfg.model.ibot_loss_weight * ibot_loss
+
+                # Backward pass
+                accelerator.backward(loss)
+
+                # Update model
+                if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(
+                        chain(
+                            unwrapped_model.student_backbone.parameters(), 
+                            unwrapped_model.student_head_dino.parameters(),
+                            unwrapped_model.student_head_ibot.parameters(),
+                        ),
+                        cfg.optim.clip_grad_norm
+                    )
+
+                unwrapped_model.student_head_dino.cancel_last_layer_gradients(epoch)
+                unwrapped_model.student_head_ibot.cancel_last_layer_gradients(epoch)
+                optimizer.step()
 
             # Log loss, lr, and weight decay
             if global_step % cfg.train.log_freq == 0:

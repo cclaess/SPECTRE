@@ -1,5 +1,6 @@
 train:
   batch_size_per_gpu: 1024
+  grad_accum_steps: 1
   dataset: ct_rate
   dataset_path: 
   output_dir: .
