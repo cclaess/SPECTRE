@@ -10,7 +10,7 @@ import spectre.models as models
 from spectre.ssl.frameworks import DINOv2
 from spectre.ssl.losses import DINOLoss, KoLeoLoss, iBOTPatchLoss
 from spectre.ssl.transforms import DINOTransform
-from spectre.configs import default_config_dino
+from spectre.configs import default_config_dinov2
 from spectre.utils.config import setup
 from spectre.utils.models import update_momentum
 from spectre.utils.dataloader import get_dataloader, extended_collate
@@ -290,5 +290,5 @@ def main(cfg):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, default_config_dino)
+    cfg = setup(args, default_config_dinov2)
     main(cfg)
