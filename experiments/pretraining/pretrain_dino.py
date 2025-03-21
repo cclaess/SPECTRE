@@ -63,7 +63,7 @@ def main(cfg):
     if cfg.train.log_wandb:
         accelerator.init_trackers(
             project_name="spectre",
-            # config=vars(cfg),
+            config={k: v for d in cfg.values() for k, v in d.items()},
             init_kwargs={
                 "name": "dino-pretrain-" + cfg.model.architecture,
                 "dir": os.path.join(cfg.train.output_dir, "logs"),
