@@ -151,6 +151,8 @@ def main(cfg):
         cfg.optim.warmup_epochs * len(data_loader) // accelerator.num_processes
     )
 
+    print(f"Lenght dataloader on rank {torch.distributed.get_rank()}: {len(data_loader)}")
+
     # Initialize learning rate scheduler
     lr_scheduler = CosineWarmupScheduler(
         optimizer,
@@ -170,6 +172,7 @@ def main(cfg):
     unwrapped_model = accelerator.unwrap_model(model)
 
     print(type(lr_scheduler))
+    print(f"Lenght dataloader on rank {torch.distributed.get_rank()}: {len(data_loader)}")
 
     # Start training
     global_step: int = 0
