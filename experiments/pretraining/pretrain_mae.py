@@ -159,11 +159,6 @@ def main(cfg):
                 # Backward pass
                 accelerator.backward(loss)
 
-                # print all parameters that have no gradient but require grad
-                for name, param in unwrapped_model.named_parameters():
-                    if param.requires_grad and param.grad is None:
-                        print(name)
-
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(unwrapped_model.parameters(), cfg.optim.clip_grad_norm)
