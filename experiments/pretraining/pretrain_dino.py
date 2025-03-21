@@ -52,7 +52,7 @@ def main(cfg):
     """
     # Initialize accelerator
     accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
+        # gradient_accumulation_steps=cfg.train.grad_accum_steps,
         log_with="wandb" if cfg.train.log_wandb else None,
     )
 
@@ -178,51 +178,47 @@ def main(cfg):
             )
             optimizer.param_groups[0]["weight_decay"] = weight_decay
 
-            with accelerator.accumulate(model):
+            # Forward pass
+            teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch["global_crops"]]
+            student_outputs = [model(view) for view in batch["global_crops"] + batch["local_crops"]]
 
-                print(batch)
+            loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
 
-                # Forward pass
-                teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch["global_crops"]]
-                student_outputs = [model(view) for view in batch["global_crops"] + batch["local_crops"]]
+            # Backward pass
+            accelerator.backward(loss)
 
-                loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
-
-                # Backward pass
-                accelerator.backward(loss)
-
-                # Update model
-                if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(
-                        chain(
-                            unwrapped_model.student_backbone.parameters(), 
-                            unwrapped_model.student_head.parameters(),
-                        ),
-                        cfg.optim.clip_grad_norm
-                    )
-
-                unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
-                optimizer.step()
-
-            # Log loss, lr, and weight decay
-            if global_step % cfg.train.log_freq == 0:
-                accelerator.print(
-                    f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
-                    f"Step {global_step + 1}/{total_num_steps}, "
-                    f"Loss: {loss.item():8f}, "
-                    f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
-                    f"Weight Decay: {weight_decay:.8f}, "
-                    f"Momentum: {momentum:.8f}"
+            # Update model
+            if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
+                accelerator.clip_grad_norm_(
+                    chain(
+                        unwrapped_model.student_backbone.parameters(), 
+                        unwrapped_model.student_head.parameters(),
+                    ),
+                    cfg.optim.clip_grad_norm
                 )
-                accelerator.log(
-                    {
-                        "loss": loss.item(),
-                        "lr": lr_scheduler.get_last_lr()[0],
-                        "weight_decay": weight_decay,
-                        "momentum": momentum,
-                    },
-                    step=global_step,
-                )
+
+            unwrapped_model.student_head.cancel_last_layer_gradients(epoch)
+            optimizer.step()
+
+        # Log loss, lr, and weight decay
+        if global_step % cfg.train.log_freq == 0:
+            accelerator.print(
+                f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
+                f"Step {global_step + 1}/{total_num_steps}, "
+                f"Loss: {loss.item():8f}, "
+                f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
+                f"Weight Decay: {weight_decay:.8f}, "
+                f"Momentum: {momentum:.8f}"
+            )
+            accelerator.log(
+                {
+                    "loss": loss.item(),
+                    "lr": lr_scheduler.get_last_lr()[0],
+                    "weight_decay": weight_decay,
+                    "momentum": momentum,
+                },
+                step=global_step,
+            )
 
             # Update global step
             global_step += 1
