@@ -188,7 +188,7 @@ def main(cfg):
             accelerator.save_model(
                 model,
                 os.path.join(
-                    cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"
+                    cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}"
                 ),
             )
 
