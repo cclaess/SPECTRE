@@ -56,13 +56,13 @@ class BasicBlock(nn.Module):
             inplanes, first_planes, kernel_size=3, stride=stride, padding=first_dilation,
             dilation=first_dilation, bias=False)
         self.bn1 = norm_layer(first_planes)
-        self.act1 = act_layer(inplace=True)
+        self.act1 = act_layer()
 
         self.conv2 = nn.Conv3d(
             first_planes, outplanes, kernel_size=3, padding=dilation, dilation=dilation, bias=False)
         self.bn2 = norm_layer(outplanes)
 
-        self.act2 = act_layer(inplace=True)
+        self.act2 = act_layer()
         self.downsample = downsample
         self.stride = stride
         self.dilation = dilation
@@ -129,18 +129,18 @@ class Bottleneck(nn.Module):
 
         self.conv1 = nn.Conv3d(inplanes, first_planes, kernel_size=1, bias=False)
         self.bn1 = norm_layer(first_planes)
-        self.act1 = act_layer(inplace=True)
+        self.act1 = act_layer()
 
         self.conv2 = nn.Conv3d(
             first_planes, width, kernel_size=3, stride=stride,
             padding=first_dilation, dilation=first_dilation, groups=cardinality, bias=False)
         self.bn2 = norm_layer(width)
-        self.act2 = act_layer(inplace=True)
+        self.act2 = act_layer()
 
         self.conv3 = nn.Conv3d(width, outplanes, kernel_size=1, bias=False)
         self.bn3 = norm_layer(outplanes)
 
-        self.act3 = act_layer(inplace=True)
+        self.act3 = act_layer()
         self.downsample = downsample
         self.stride = stride
         self.dilation = dilation
@@ -409,15 +409,15 @@ class ResNet(nn.Module):
             self.conv1 = nn.Sequential(*[
                 nn.Conv3d(in_chans, stem_chs[0], 3, stride=2, padding=1, bias=False),
                 norm_layer(stem_chs[0]),
-                act_layer(inplace=True),
+                act_layer(),
                 nn.Conv3d(stem_chs[0], stem_chs[1], 3, stride=1, padding=1, bias=False),
                 norm_layer(stem_chs[1]),
-                act_layer(inplace=True),
+                act_layer(),
                 nn.Conv3d(stem_chs[1], inplanes, 3, stride=1, padding=1, bias=False)])
         else:
             self.conv1 = nn.Conv3d(in_chans, inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = norm_layer(inplanes)
-        self.act1 = act_layer(inplace=True)
+        self.act1 = act_layer()
         self.feature_info = [dict(num_chs=inplanes, reduction=2, module='act1')]
 
         # Stem pooling. The name 'maxpool' remains for weight compatibility.
@@ -425,7 +425,7 @@ class ResNet(nn.Module):
             self.maxpool = nn.Sequential(*filter(None, [
                 nn.Conv3d(inplanes, inplanes, 3, stride=2, padding=1, bias=False),
                 norm_layer(inplanes),
-                act_layer(inplace=True),
+                act_layer(),
             ]))
         else:
             self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
