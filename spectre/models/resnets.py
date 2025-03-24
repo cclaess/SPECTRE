@@ -165,7 +165,7 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             shortcut = self.downsample(shortcut)
-        x += shortcut
+        x = x + shortcut
         x = self.act3(x)
 
         return x
