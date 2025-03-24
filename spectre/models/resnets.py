@@ -578,9 +578,9 @@ class ResNet(nn.Module):
             x = F.dropout(x, p=float(self.drop_rate), training=self.training)
         return x if pre_logits else self.fc(x)
 
-    def forward(self, x: torch.Tensor, pre_logits: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.forward_features(x)
-        x = self.forward_head(x, pre_logits=pre_logits)
+        x = self.forward_head(x)
         return x
     
 
