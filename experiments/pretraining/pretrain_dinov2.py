@@ -235,6 +235,7 @@ def main(cfg):
                     student_patch_tokens_global,
                     mask=batch["masks"],
                     epoch=epoch,
+                    masks_weight=batch["masks_weight"],
                 )
 
                 loss = cfg.model.dino_loss_weight * (dino_local_crops_loss + dino_global_crops_loss) + \
