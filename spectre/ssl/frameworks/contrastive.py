@@ -10,6 +10,8 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 
+from spectre.models import VisionTransformer
+from spectre.ssl.models import MaskedVisionTransformer
 from spectre.ssl.heads import DINOProjectionHead
 from spectre.utils.models import deactivate_requires_grad
 
@@ -51,7 +53,7 @@ class DINO(nn.Module):
 class DINOv2(nn.Module):
     def __init__(
             self, 
-            backbone: nn.Module, 
+            backbone: VisionTransformer, 
             input_dim: int,
             hidden_dim: int = 2048,
             bottleneck_dim: int = 256,
@@ -59,7 +61,7 @@ class DINOv2(nn.Module):
         ):
         super().__init__()
 
-        self.student_backbone = backbone
+        self.student_backbone = MaskedVisionTransformer(vit=backbone, use_mask_token=True)
         self.student_head_dino = DINOProjectionHead(
             input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1,
         )
@@ -81,19 +83,20 @@ class DINOv2(nn.Module):
     def forward(
             self, 
             global_crops: torch.Tensor, 
-            local_crops: torch.Tensor, 
+            local_crops: torch.Tensor,
+            masks: torch.Tensor,
             mask_indices: list, 
-            upperbound
+            upperbound: int,
         ) -> torch.Tensor:
-        x_global = self.student_backbone.forward_features(global_crops)
-        x_local = self.student_backbone.forward_features(local_crops)
+        x_global = self.student_backbone.encode(global_crops, mask=masks)
+        x_local = self.student_backbone.encode(local_crops)
 
         cls_token_global = x_global[:, 0]
         patch_tokens_global = x_global[:, 1:]
         cls_token_local = x_local[:, 0]
 
         buffer_tensor = patch_tokens_global.new_zeros(
-            upperbound, patch_tokens_global.shape[-1]).as_tensor()
+            upperbound, patch_tokens_global.shape[-1])
         buffer_tensor[:mask_indices.shape[0]].copy_(torch.index_select(
             patch_tokens_global.flatten(0, 1),
             dim=0,
@@ -112,14 +115,14 @@ class DINOv2(nn.Module):
             self, 
             global_crops: torch.Tensor, 
             mask_indices: list, 
-            upperbound
+            upperbound: int,
         ) -> torch.Tensor:
         x = self.teacher_backbone.forward_features(global_crops)
         cls_tokens = x[:, 0]
         patch_tokens = x[:, 1:]
 
         buffer_tensor = patch_tokens.new_zeros(
-            upperbound, patch_tokens.shape[-1]).as_tensor()
+            upperbound, patch_tokens.shape[-1])
         torch.index_select(
             patch_tokens.flatten(0, 1),
             dim=0,

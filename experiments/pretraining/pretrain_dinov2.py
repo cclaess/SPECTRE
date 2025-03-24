@@ -203,13 +203,14 @@ def main(cfg):
 
                 # Forward pass
                 teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
-                    global_crops=batch["global_crops"], 
-                    mask_indices=batch["mask_indices"], 
+                    global_crops=batch["global_crops"].as_tensor(), 
+                    mask_indices=batch["mask_indices"].as_tensor(), 
                     upperbound=batch["upperbound"]
                 )
                 student_cls_tokens_global, student_patch_tokens_global, student_cls_tokens_local = model(
-                    global_crops=batch["global_crops"], 
-                    local_crops=batch["local_crops"], 
+                    global_crops=batch["global_crops"].as_tensor(), 
+                    local_crops=batch["local_crops"].as_tensor(), 
+                    masks=batch["masks"].as_tensor(),
                     mask_indices=batch["mask_indices"], 
                     upperbound=batch["upperbound"]
                 )

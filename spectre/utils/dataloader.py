@@ -62,7 +62,7 @@ def get_dataloader(
     return dataloader
 
 
-def extended_collate(samples_list, mask_ratio, mask_probability, n_tokens, mask_generator):
+def extended_collate(samples_list, mask_ratio, mask_probability=None, n_tokens=None, mask_generator=None):
     """
     Applies MONAI's list_data_collate first and then extends it with DINOv2 masking logic.
 
@@ -84,34 +84,41 @@ def extended_collate(samples_list, mask_ratio, mask_probability, n_tokens, mask_
     global_crops = torch.cat(collated_data["global_crops"], dim=0)
     local_crops = torch.cat(collated_data["local_crops"], dim=0)
 
-    # Masking logic (DINOv2 style)
-    B = len(global_crops)
-    N = n_tokens
-    n_samples_masked = int(B * mask_probability)
+    if (mask_probability is None or n_tokens is None or mask_generator is None):
+        return {
+            "global_crops": global_crops,
+            "local_crops": local_crops,
+        }
+    
+    else:
+        # Masking logic (DINOv2 style)
+        B = len(global_crops)
+        N = n_tokens
+        n_samples_masked = int(B * mask_probability)
 
-    probs = torch.linspace(*mask_ratio, n_samples_masked + 1)
-    upperbound = 0
-    masks_list = []
+        probs = torch.linspace(*mask_ratio, n_samples_masked + 1)
+        upperbound: int = 0
+        masks_list = []
 
-    for i in range(n_samples_masked):
-        prob_min, prob_max = probs[i], probs[i + 1]
-        masks_list.append(torch.BoolTensor(mask_generator(int(N * random.uniform(prob_min, prob_max)))))
-        upperbound += int(N * prob_max)
+        for i in range(n_samples_masked):
+            prob_min, prob_max = probs[i], probs[i + 1]
+            masks_list.append(torch.BoolTensor(mask_generator(int(N * random.uniform(prob_min, prob_max)))))
+            upperbound += int(N * prob_max)
 
-    for _ in range(n_samples_masked, B):
-        masks_list.append(torch.BoolTensor(mask_generator(0)))
+        for _ in range(n_samples_masked, B):
+            masks_list.append(torch.BoolTensor(mask_generator(0)))
 
-    random.shuffle(masks_list)
-    collated_masks = torch.stack(masks_list).flatten(1)
-    mask_indices_list = collated_masks.flatten().nonzero().flatten()
+        random.shuffle(masks_list)
+        collated_masks = torch.stack(masks_list).flatten(1)
+        mask_indices_list = collated_masks.flatten().nonzero().flatten()
 
-    masks_weight = (1 / collated_masks.sum(-1).clamp(min=1.0)).unsqueeze(-1).expand_as(collated_masks)[collated_masks]
+        masks_weight = (1 / collated_masks.sum(-1).clamp(min=1.0)).unsqueeze(-1).expand_as(collated_masks)[collated_masks]
 
-    return {
-        "global_crops": global_crops,
-        "local_crops": local_crops,
-        "masks": collated_masks,
-        "mask_indices": mask_indices_list,
-        "masks_weight": masks_weight,
-        "upperbound": upperbound,
-    }
+        return {
+            "global_crops": global_crops,
+            "local_crops": local_crops,
+            "masks": collated_masks,
+            "mask_indices": mask_indices_list,
+            "masks_weight": masks_weight,
+            "upperbound": upperbound,
+        }
