@@ -265,16 +265,15 @@ class MaskedVisionTransformer(nn.Module):
         x = x[:, self.vit.num_prefix_tokens :, :]
         if self.vit.dynamic_img_size:
             x = x.transpose(1, 2)  # NLC -> NCL
-            total_size = torch.numel(x)
             batch_size = x.size(0)
             num_channels = x.size(1)
-            grid_size = int(math.pow(total_size / (batch_size * num_channels), 1/3))
+            grid_size = self.vit.patch_embed.grid_size
             x = x.view(
                 batch_size,
                 num_channels,
-                grid_size,
-                grid_size,
-                grid_size,
+                grid_size[0],
+                grid_size[1],
+                grid_size[2],
             )  # NCL -> NCHWD
 
             # NCHWD -> NHWDC
