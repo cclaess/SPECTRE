@@ -201,6 +201,10 @@ def main(cfg):
 
             with accelerator.accumulate(model):
 
+                print(batch["masks"].shape)
+                import sys
+                sys.exit()
+
                 # Forward pass
                 teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
                     global_crops=batch["global_crops"].as_tensor(), 
