@@ -7,10 +7,16 @@ from spectre.utils import distributed, utils
 
 
 def apply_scaling_rules_to_cfg(cfg):
-
+    """
+    Apply learing rate scaling rules to the configuration object.
+    """
     base_lr = cfg.optim.base_lr
     cfg.optim.lr = base_lr
-    
+
+    # Apply gradient accumulation scaling
+    cfg.optim.lr *= cfg.train.grad_accum_steps
+
+    # Apply scaling rules
     if cfg.optim.scaling_rule == "constant":
         return cfg
     
