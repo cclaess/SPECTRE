@@ -214,14 +214,9 @@ def main(cfg):
                     upperbound=batch["upperbound"]
                 )
 
-                dino_local_crops_loss = criterion_dino(
-                    student_cls_tokens_local.chunk(8, dim=0),
+                dino_loss = criterion_dino(
                     teacher_cls_tokens_global.chunk(2, dim=0),
-                    epoch=epoch,
-                )
-                dino_global_crops_loss = criterion_dino(
-                    student_cls_tokens_global.chunk(2, dim=0),
-                    teacher_cls_tokens_global.chunk(2, dim=0),
+                    student_cls_tokens_global.chunk(2, dim=0) + student_cls_tokens_local.chunk(8, dim=0),
                     epoch=epoch,
                 )
 
@@ -237,7 +232,7 @@ def main(cfg):
                     masks_weight=batch["masks_weight"],
                 )
 
-                loss = cfg.model.dino_loss_weight * (dino_local_crops_loss + dino_global_crops_loss) + \
+                loss = cfg.model.dino_loss_weight * dino_loss + \
                     cfg.model.koleo_loss_weight * koleo_loss + \
                     cfg.model.ibot_loss_weight * ibot_loss
 
