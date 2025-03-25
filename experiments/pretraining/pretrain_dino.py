@@ -14,7 +14,7 @@ from spectre.ssl.transforms import DINOTransform
 from spectre.configs import default_config_dino
 from spectre.utils.config import setup
 from spectre.utils.models import update_momentum
-from spectre.utils.dataloader import get_dataloader
+from spectre.utils.dataloader import get_dataloader, extended_collate
 from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
 
 
@@ -84,6 +84,7 @@ def main(cfg):
         num_workers=cfg.train.num_workers,
         pin_memory=True,
         shuffle=True,
+        collate_fn=extended_collate,
     )
 
     # Initialize backbone
@@ -188,10 +189,19 @@ def main(cfg):
                 optimizer.param_groups[0]["weight_decay"] = weight_decay
 
                 # Forward pass
-                teacher_outputs = [unwrapped_model.forward_teacher(view) for view in batch["global_crops"]]
-                student_outputs = [model(view) for view in batch["global_crops"] + batch["local_crops"]]
+                teacher_cls_tokens_global = unwrapped_model.forward_teacher(
+                    global_crops=batch["global_crops"]
+                )
+                student_cls_tokens_global, student_cls_tokens_local = model(
+                    global_crops=batch["global_crops"], 
+                    local_crops=batch["local_crops"]
+                )
 
-                loss = criterion(teacher_outputs, student_outputs, epoch=epoch)
+                loss = criterion(
+                    teacher_cls_tokens_global.chunk(2, dim=0),
+                    student_cls_tokens_global.chunk(2, dim=0) + student_cls_tokens_local.chunk(8, dim=0),
+                    epoch=epoch,
+                )
 
                 # Backward pass
                 accelerator.backward(loss)
