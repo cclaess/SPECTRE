@@ -246,6 +246,9 @@ def main(cfg):
                 ),
             )
 
+    # Make sure the trackers are finished before exiting
+    accelerator.end_training()
+
 
 if __name__ == "__main__":
     parser = get_args_parser()

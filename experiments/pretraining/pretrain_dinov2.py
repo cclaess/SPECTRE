@@ -295,6 +295,9 @@ def main(cfg):
                     cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}"
                 ),
             )
+    
+    # Make sure the trackers are finished before exiting
+    accelerator.end_training()
 
 
 if __name__ == "__main__":
