@@ -255,7 +255,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = setup(args, default_config_dino)
 
-    import torch
-    torch.autograd.set_detect_anomaly(True)
-
     main(cfg)
