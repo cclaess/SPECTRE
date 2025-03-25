@@ -19,8 +19,6 @@ This repository is organized as follows:
 
 - 🔬 **`experiments/`** – Includes Python scripts for running various pretraining and downstream experiments.
 
-- 🧑‍💻 **`scripts/`** – Contains Bash scripts for automating the execution of experiments.
-
 - 📄 **`requirements.txt`** – Lists the dependencies required to run the project.
 
 - 🐳 **`Dockerfile`** – Defines the environment for running SPECTRE inside a container.
