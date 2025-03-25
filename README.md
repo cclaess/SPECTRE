@@ -88,6 +88,6 @@ If you use SPECTRE in your research or wish to cite it, please use the following
 ```
 
 ## 🤝 Acknowledgements
-This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We acknowledge the **open-source CT datasets** and **research, code, and packgaes** that made this research possible, including:
+This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We acknowledge the **open-source CT datasets** and **research, code, and packages** that made this research possible, including:
 - [CT-RATE and CT-CLIP](https://arxiv.org/abs/2403.17834) – Thoracic CT scans with paired radiology reports, a CT foundation model based on the CLIP framework.
 - [MERLIN](https://arxiv.org/abs/2406.06512) – Abdominal CT scans with paired radiology reports and ICD codes, a vision-language CT foundation model.
