@@ -13,9 +13,6 @@ def apply_scaling_rules_to_cfg(cfg):
     base_lr = cfg.optim.base_lr
     cfg.optim.lr = base_lr
 
-    # Apply gradient accumulation scaling
-    cfg.optim.lr *= cfg.train.grad_accum_steps
-
     # Apply scaling rules
     if cfg.optim.scaling_rule == "constant":
         return cfg
@@ -26,7 +23,9 @@ def apply_scaling_rules_to_cfg(cfg):
     except ValueError:
         raise NotImplementedError(f"Unknown scaling rule: {cfg.optim.scaling_rule}")
     
-    scale_factor = cfg.train.batch_size_per_gpu * distributed.get_global_size() / ref_batch_size
+    scale_factor = cfg.train.batch_size_per_gpu * distributed.get_global_size()
+    scale_factor /= ref_batch_size
+    scale_factor *= cfg.train.grad_accum_steps
     
     if scaling_type == "sqrt":
         cfg.optim.lr *= math.sqrt(scale_factor)
