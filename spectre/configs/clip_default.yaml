@@ -1,0 +1,31 @@
+train:
+  batch_size_per_gpu: 1024
+  grad_accum_steps: 1
+  dataset: vision_language_dataset
+  dataset_path: 
+  output_dir: .
+  saveckp_freq: 20
+  seed: 0
+  num_workers: 10
+  cache_dataset: true
+  cache_dir: ./cache/monai/
+  log_wandb: true
+  log_freq: 1
+optim:
+  epochs: 100
+  weight_decay: 0.04
+  weight_decay_end: 0.4
+  base_lr: 0.004
+  lr: 0.  # will be set after applying scaling rule
+  warmup_epochs: 10
+  min_lr: 1.0e-06
+  clip_grad_norm: 3.0
+  scaling_rule: sqrt_wrt_1024
+  adamw_beta1: 0.9
+  adamw_beta2: 0.999
+model:
+  architecture: vit_base_patch16_128
+  hidden_dim: 2048
+  bottleneck_dim: 256
+  output_dim: 65536
+

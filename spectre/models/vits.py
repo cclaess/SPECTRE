@@ -473,9 +473,9 @@ class VisionTransformer(nn.Module):
         x = self.head_drop(x)
         return x if pre_logits else self.head(x)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, pre_logits: bool = False) -> torch.Tensor:
         x = self.forward_features(x)
-        x = self.forward_head(x)
+        x = self.forward_head(x, pre_logits=pre_logits)
         return x
 
 
