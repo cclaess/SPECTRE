@@ -24,7 +24,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     Load arguments from config file. If argument is specified in command line, 
     it will override the value in config file.
     """
-    parser = argparse.ArgumentParser(description="Pretrain DINO")
+    parser = argparse.ArgumentParser(description="Pretrain DINOv2")
     parser.add_argument(
         "--config_file",
         type=str,
@@ -98,9 +98,10 @@ def main(cfg):
         )
     )
     data_loader = get_dataloader(
-        cfg.train.dataset,
-        cfg.train.dataset_path,
+        cfg.train.datasets,
+        cfg.train.data_dir,
         include_reports=False,
+        include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
         transform=DINOTransform(),

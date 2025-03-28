@@ -74,9 +74,10 @@ def main(cfg):
 
     # Get dataloader
     data_loader = get_dataloader(
-        cfg.train.dataset,
-        cfg.train.dataset_path,
+        cfg.train.datasets,
+        cfg.train.data_dir,
         include_reports=False,
+        include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
         transform=DINOTransform(),
