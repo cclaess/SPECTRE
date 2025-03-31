@@ -236,7 +236,7 @@ class VisionTransformer(nn.Module):
         self.head_drop = nn.Dropout(drop_rate)
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-        # self.init_weights()
+        self.init_weights()
 
     def init_weights(self) -> None:
         if self.pos_embed is not None:
