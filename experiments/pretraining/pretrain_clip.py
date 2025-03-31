@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 from itertools import chain
 from functools import partial
@@ -6,10 +7,11 @@ from functools import partial
 import torch
 from torch.optim import AdamW
 from accelerate import Accelerator
-
+sys.path.append(r"C:\Users\20195435\OneDrive - TU Eindhoven\TUe\Projects\SPECTRE")
 import spectre.models as models
 from spectre.ssl.frameworks.vision_language import SigLIP3D
-from spectre.ssl.losses import siglip_loss
+from spectre.models.vits import VisionTransformer, FeatureVisionTransformer
+from spectre.models.qwen_text_encoders import Qwen2Model, Qwen2Config
 from spectre.ssl.transforms import SigLipTransform
 from spectre.configs import default_config_clip
 from spectre.utils.config import setup
@@ -17,6 +19,7 @@ from spectre.utils.models import update_momentum
 from spectre.utils.dataloader import get_dataloader, extended_collate
 from spectre.utils.masking import MaskingGenerator
 from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
+
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -75,31 +78,66 @@ def main(cfg):
 
     # Initialize backbone
     if (
-        cfg.model.architecture in models.__dict__ 
-        and cfg.model.architecture.startswith("vit")
+        cfg.model.image_encoder.architecture in models.__dict__ 
+        and cfg.model.image_encoder.architecture.startswith("vit")
     ):
-        backbone = models.__dict__[cfg.model.architecture](
+        vision_encoder = models.__dict__[cfg.model.image_encoder.architecture](
             num_classes=0,
             dynamic_img_size=True,
         )
-        embed_dim = backbone.embed_dim
+        
     else:
-        raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
+        raise NotImplementedError(f"Model {cfg.model.image_encoder.architecture} not implemented.")
+    
+
+    if cfg.model.image_encoder.vit_pretrained:
+        accelerator.print(f"Loading pretrained weights from {cfg.model.image_encoder.vit_pretrained}")
+        vision_encoder.load_state_dict(
+            torch.load(cfg.model.image_encoder.vit_pretrained, map_location="cpu"),
+            strict=False,
+        )
+        accelerator.print("Pretrained weights loaded.")
+    else:
+        accelerator.print("No pretrained weights provided.")
+
+    vision_feature_comb = FeatureVisionTransformer(
+        patch_dim=cfg.model.feature_comb.patch_dim,
+        num_patches=cfg.model.feature_comb.num_patches,
+        depth=cfg.model.feature_comb.depth,
+        heads=cfg.model.feature_comb.num_heads,
+        embed_dim=cfg.model.feature_comb.embed_dim,
+    )
+
+    if cfg.model.feature_comb.feature_vit_pretrained:
+        accelerator.print(f"Loading pretrained weights from {cfg.model.feature_comb.feature_vit_pretrained}")
+        vision_feature_comb.load_state_dict(
+            torch.load(cfg.model.feature_comb.feature_vit_pretrained, map_location="cpu"),
+            strict=False,
+        )
+        accelerator.print("Pretrained weights loaded.")
+    else:   
+        accelerator.print("No pretrained weights provided.")
+    
+    model_config = Qwen2Config.from_pretrained(cfg.model.text_encoder.text_encoder_config)
+    text_encoder = Qwen2Model(model_config)
+
+    if cfg.model.text_encoder.text_encoder_pretrained:
+        accelerator.print(f"Loading pretrained weights from {cfg.model.text_encoder.text_encoder_pretrained}")
+        loaded = torch.load(cfg.model.text_encoder.text_encoder_pretrained, map_location="cpu")
+        text_encoder.load_state_dict(loaded, strict=False)
+        accelerator.print("Pretrained weights loaded.")
+    else:
+        accelerator.print("No pretrained weights provided. Attempting to download pretrained weights.")
+        text_encoder = Qwen2Model.from_pretrained(cfg.model.text_encoder.text_encoder_config, trust_remote_code=True)
+        accelerator.print("Pretrained weights downloaded.")
+
+    # Initialize the SigLIP model
+    model = SigLIP3D(vision_encoder, None, vision_feature_comb, None, text_encoder, None, embed_dim=768)
 
     # Get dataloader
-    collate_fn = partial(
-        extended_collate, 
-        mask_ratio=(cfg.model.mask_ratio_min, cfg.model.mask_ratio_max), 
-        mask_probability=cfg.model.mask_probability, 
-        n_tokens=backbone.patch_embed.num_patches,
-        mask_generator=MaskingGenerator(
-            input_size=backbone.patch_embed.grid_size,
-            max_num_patches=0.5 * backbone.patch_embed.num_patches,
-        )
-    )
     data_loader = get_dataloader(
-        cfg.train.dataset,
-        cfg.train.dataset_path,
+        cfg.train.datasets,
+        cfg.train.data_dir,
         include_reports=True,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
@@ -108,28 +146,7 @@ def main(cfg):
         num_workers=cfg.train.num_workers,
         pin_memory=True,
         shuffle=True,
-        collate_fn=collate_fn,
     )
-
-    # Initialize DINO model
-    model = SigLIP3D(
-        backbone,
-        input_dim=embed_dim,
-        hidden_dim=cfg.model.hidden_dim,
-        bottleneck_dim=cfg.model.bottleneck_dim,
-        output_dim=cfg.model.output_dim,
-    )
-
-    # Initialize criterion
-    criterion_dino = DINOLoss(
-        output_dim=cfg.model.output_dim,
-        warmup_teacher_temp=cfg.model.warmup_teacher_temp,
-        teacher_temp=cfg.model.teacher_temp,
-        warmup_teacher_temp_epochs=cfg.model.warmup_teacher_temp_epochs,
-        student_temp=cfg.model.student_temp,
-        center_momentum=cfg.model.center_momentum,
-    )
- 
 
     # Initialize optimizer
     optimizer = AdamW(
@@ -148,10 +165,8 @@ def main(cfg):
     )
 
     # Prepare model, data, and optimizer for training
-    model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
-        optimizer, lr_scheduler = accelerator.prepare(
-            model, data_loader, criterion_dino, criterion_koleo,
-            criterion_ibot, optimizer, lr_scheduler,
+    model, data_loader, optimizer, lr_scheduler = accelerator.prepare(
+            model, data_loader, optimizer, lr_scheduler,
         )
     
     # Keep unwrapped model for easier access to individual components
@@ -169,17 +184,6 @@ def main(cfg):
 
             with accelerator.accumulate(model):
 
-                # Update momentum
-                momentum = cosine_schedule(
-                    global_step,
-                    total_num_steps,
-                    cfg.model.momentum_teacher,
-                    cfg.model.momentum_teacher_end,
-                )
-                update_momentum(unwrapped_model.student_backbone.vit, unwrapped_model.teacher_backbone, momentum)
-                update_momentum(unwrapped_model.student_head_dino, unwrapped_model.teacher_head_dino, momentum)
-                update_momentum(unwrapped_model.student_head_ibot, unwrapped_model.teacher_head_ibot, momentum)
-
                 # Update weight decay
                 weight_decay = cosine_schedule(
                     global_step,
@@ -190,43 +194,10 @@ def main(cfg):
                 optimizer.param_groups[0]["weight_decay"] = weight_decay
 
                 # Forward pass
-                teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
-                    global_crops=batch["global_crops"].as_tensor(), 
-                    mask_indices=batch["mask_indices"], 
-                    upperbound=batch["upperbound"]
-                )
-                student_cls_tokens_global, student_patch_tokens_global, student_cls_tokens_local = model(
-                    global_crops=batch["global_crops"].as_tensor(), 
-                    local_crops=batch["local_crops"].as_tensor(), 
-                    masks=torch.cat([
-                        torch.zeros(batch["masks"].shape[0], 1, dtype=torch.bool, device=batch["masks"].device), 
-                        batch["masks"]
-                    ], dim=1),  # Add cls token to mask here, not sure where to do this yet ...
-                    mask_indices=batch["mask_indices"], 
-                    upperbound=batch["upperbound"]
+                loss = unwrapped_model.forward(
+                   batch['image'], batch['input_ids'], batch['attention_mask'], return_loss = True
                 )
 
-                dino_loss = criterion_dino(
-                    teacher_cls_tokens_global.chunk(2, dim=0),
-                    student_cls_tokens_global.chunk(2, dim=0) + student_cls_tokens_local.chunk(8, dim=0),
-                    epoch=epoch,
-                )
-
-                koleo_loss = sum(
-                    criterion_koleo(p) for p in student_cls_tokens_global.chunk(2, dim=0)
-                )
-
-                ibot_loss = criterion_ibot.forward_masked(
-                    teacher_patch_tokens_global,
-                    student_patch_tokens_global,
-                    mask=batch["masks"],
-                    epoch=epoch,
-                    masks_weight=batch["masks_weight"],
-                )
-
-                loss = cfg.model.dino_loss_weight * dino_loss + \
-                    cfg.model.koleo_loss_weight * koleo_loss + \
-                    cfg.model.ibot_loss_weight * ibot_loss
 
                 # Backward pass
                 accelerator.backward(loss)
@@ -242,8 +213,6 @@ def main(cfg):
                         cfg.optim.clip_grad_norm
                     )
 
-                unwrapped_model.student_head_dino.cancel_last_layer_gradients(epoch)
-                unwrapped_model.student_head_ibot.cancel_last_layer_gradients(epoch)
                 optimizer.step()
 
                 # Log loss, lr, and weight decay

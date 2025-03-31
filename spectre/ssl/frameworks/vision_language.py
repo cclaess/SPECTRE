@@ -16,8 +16,8 @@ import torch
 import torch.nn as nn
 from transformers import AutoTokenizer
 
-import sys
-sys.path.append(r"C:\Users\20195435\OneDrive - TU Eindhoven\TUe\Projects\SPECTRE")
+# import sys
+# sys.path.append(r"C:\Users\20195435\OneDrive - TU Eindhoven\TUe\Projects\SPECTRE")
 
 from spectre.models.vits import VisionTransformer, FeatureVisionTransformer
 from spectre.models.text_encoders import GeneralTextEncoder
@@ -68,8 +68,7 @@ class SigLIP3D(nn.Module):
         text_encoder: nn.Module = Qwen2Model(Qwen2Config.from_pretrained("infgrad/jasper_en_vision_language_v1", is_text_encoder=True)),
         pretrained_text_encoder_path: str = "weights/clip/jasper_en_vision_language_v1_base.pth",
         # Common embedding dimension and logit scale initialization
-        embed_dim: int = 768,
-        return_loss: bool = True,
+        embed_dim: int = 768
     ):
         """
         3D SigLIP: An improved CLIP model combining a novel 3D Vision Transformer and an improved text encoder.

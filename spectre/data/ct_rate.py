@@ -4,25 +4,30 @@ from typing import Callable
 
 from monai.data import Dataset, PersistentDataset
 
-
 class CTRateDataset(Dataset):
     def __init__(
         self, 
-        data_dir: str, 
+        data_dir: str,
         include_reports: bool = False, 
-        transform: Callable = None
+        transform: Callable = None,
+        subset: str = "train"
     ):
-        image_paths = Path(data_dir).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
-
+        image_paths = Path(data_dir).glob(os.path.join( 'dataset', subset, "*", "*", "*.nii.gz"))
         if include_reports:
             import pandas as pd
-            reports = pd.read_csv(os.path.join(
-                data_dir, "dataset", "radiology_text_reports", "train_reports.csv"
-            ))
+            text_path = os.path.join(Path(data_dir), 'dataset', "radiology_text_reports", f"{subset}_reports.xlsx" )
+            reports = pd.read_excel(text_path)
 
             data = [{
                 "image": str(image_path),
-                "report": reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0]
+                "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
+
+                "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
+
             } for image_path in image_paths]
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]
@@ -36,19 +41,25 @@ class CTRateCacheDataset(PersistentDataset):
         data_dir: str,
         cache_dir: str,
         include_reports: bool = False, 
-        transform: Callable = None
+        transform: Callable = None,
+        subset: str = "train"
     ):
-        image_paths = Path(data_dir).glob(os.path.join("dataset", "train", "*", "*", "*.nii.gz"))
-
+        image_paths = Path(data_dir).glob(os.path.join( 'dataset', subset, "*", "*", "*.nii.gz"))
         if include_reports:
             import pandas as pd
-            reports = pd.read_csv(os.path.join(
-                data_dir, "dataset", "radiology_text_reports", "train_reports.csv"
-            ))
+            text_path = os.path.join(Path(data_dir), 'dataset', "radiology_text_reports", f"{subset}_reports.xlsx" )
+            reports = pd.read_excel(text_path)
 
             data = [{
                 "image": str(image_path),
-                "report": reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0]
+                "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
+
+                "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
+                reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
+
             } for image_path in image_paths]
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]

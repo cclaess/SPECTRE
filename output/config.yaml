@@ -1,11 +1,10 @@
 train:
   batch_size_per_gpu: 1024
   grad_accum_steps: 1
-  datasets: [
-    ct_rate
-  ]
+  datasets:
+  - ct_rate
   data_dir: C:\Users\20195435\Documents\TUe\SPECTRE
-  output_dir: .
+  output_dir: C:\Users\20195435\OneDrive - TU Eindhoven\TUe\Projects\SPECTRE\output
   saveckp_freq: 20
   seed: 0
   num_workers: 10
@@ -18,7 +17,7 @@ optim:
   weight_decay: 0.04
   weight_decay_end: 0.4
   base_lr: 0.004
-  lr: 0.  # will be set after applying scaling rule
+  lr: 0.004
   warmup_epochs: 10
   min_lr: 1.0e-06
   clip_grad_norm: 3.0
@@ -29,14 +28,14 @@ model:
   architecture: clip
   image_encoder:
     architecture: vit_base_patch16_128
-    vit_pretrained: False
+    vit_pretrained: false
     depth: 12
     num_heads: 12
     mlp_ratio: 4.0
     qkv_bias: true
   feature_comb:
     architecture: vit_base_patch16_128
-    feature_vit_pretrained: False
+    feature_vit_pretrained: false
     patch_dim: 768
     num_patches: 36
     depth: 4
@@ -45,4 +44,3 @@ model:
   text_encoder:
     text_encoder_config: infgrad/jasper_en_vision_language_v1
     text_encoder_pretrained: weights/text/jasper_en_vision_language_v1_base.pth
-

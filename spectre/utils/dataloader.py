@@ -67,18 +67,18 @@ def get_dataloader(
         #         datasets_list.append(InspectDataset(**kwargs))
 
         # MERLIN dataset with paired abdominal CT and radiology reports
-        # elif dataset == "merlin":
-        #     kwargs = {
-        #         "data_dir": os.path.join(data_dir, "MERLIN"),
-        #         "include_reports": include_reports,
-        #         "transform": transform,
-        #     }
-        #     if cache_dataset:
-        #         from spectre.data import MerlinCacheDataset
-        #         datasets_list.append(MerlinCacheDataset(**kwargs, cache_dir=cache_dir))
-        #     else:
-        #         from spectre.data import MerlinDataset
-        #         datasets_list.append(MerlinDataset(**kwargs))
+        elif dataset == "merlin":
+            kwargs = {
+                "data_dir": os.path.join(data_dir, "MERLIN"),
+                "include_reports": include_reports,
+                "transform": transform,
+            }
+            if cache_dataset:
+                from spectre.data import MerlinCacheDataset
+                datasets_list.append(MerlinCacheDataset(**kwargs, cache_dir=cache_dir))
+            else:
+                from spectre.data import MerlinDataset
+                datasets_list.append(MerlinDataset(**kwargs))
 
         # NLST dataset with low-dose chest CT
         elif dataset == "nlst":

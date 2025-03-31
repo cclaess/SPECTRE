@@ -177,3 +177,11 @@ cython_debug/
 
 # Training/testing data
 datasets/
+
+# wandb
+wandb/
+
+# weights
+*.pt
+*.ckpt
+*.pth

@@ -159,12 +159,15 @@ class TokenizeTransform(MapTransform):
     def __init__(self, keys: KeysCollection, tokenizer_name=None, text_key="report"):
 
         self.keys = keys
-        if tokenizer is None:
-            tokenizer_name = "Qwen/Qwen2.5-7B-Instruct"
-        self.tokenizer = tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
+        if tokenizer_name is None:
+            tokenizer_name = "infgrad/jasper_en_vision_language_v1"
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
         self.text_key = text_key 
     def __call__(self, data):
-        data["encoding"] = self.tokenizer(str(data[self.text_key]), add_special_tokens=True)
+        
+        tokenizer_output = self.tokenizer(str(data[self.text_key]), add_special_tokens=True)
+        data["input_ids"] = tokenizer_output["input_ids"]
+        data["attention_mask"] = tokenizer_output["attention_mask"]
         return data
 
 
