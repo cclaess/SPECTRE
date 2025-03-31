@@ -168,9 +168,6 @@ def main(cfg):
     model, data_loader, optimizer, lr_scheduler = accelerator.prepare(
             model, data_loader, optimizer, lr_scheduler,
         )
-    
-    # Keep unwrapped model for easier access to individual components
-    unwrapped_model = accelerator.unwrap_model(model)
 
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
@@ -194,7 +191,7 @@ def main(cfg):
                 optimizer.param_groups[0]["weight_decay"] = weight_decay
 
                 # Forward pass
-                loss = unwrapped_model.forward(
+                loss = model(
                    batch['image'], batch['input_ids'], batch['attention_mask'], return_loss = True
                 )
 
@@ -203,14 +200,7 @@ def main(cfg):
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(
-                        chain(
-                            unwrapped_model.student_backbone.parameters(), 
-                            unwrapped_model.student_head_dino.parameters(),
-                            unwrapped_model.student_head_ibot.parameters(),
-                        ),
-                        cfg.optim.clip_grad_norm
-                    )
+                    accelerator.clip_grad_norm_(model.parameters(), cfg.optim.clip_grad_norm)
 
                 optimizer.step()
 
