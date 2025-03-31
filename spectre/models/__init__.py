@@ -1,4 +1,4 @@
-from .vits import VisionTransformer
+from .vits import VisionTransformer, FeatureVisionTransformer
 from .vits import (
     vit_tiny_patch16_128, 
     vit_small_patch16_128, 
@@ -14,3 +14,5 @@ from .resnets import (
     resnext50,
     resnext101,
 )
+from .tokenization_qwen import Qwen2Tokenizer, Qwen2TokenizerFast
+from .qwen_text_encoders import Qwen2Model, Qwen2Config

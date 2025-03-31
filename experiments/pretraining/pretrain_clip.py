@@ -1,23 +1,16 @@
 import os
-import sys
 import argparse
-from itertools import chain
-from functools import partial
 
 import torch
 from torch.optim import AdamW
 from accelerate import Accelerator
 
 import spectre.models as models
-from spectre.ssl.frameworks.vision_language import SigLIP3D
-from spectre.models.vits import VisionTransformer, FeatureVisionTransformer
-from spectre.models.qwen_text_encoders import Qwen2Model, Qwen2Config
+from spectre.ssl.frameworks import SigLIP3D
 from spectre.ssl.transforms import SigLipTransform
 from spectre.configs import default_config_clip
 from spectre.utils.config import setup
-from spectre.utils.models import update_momentum
-from spectre.utils.dataloader import get_dataloader, extended_collate
-from spectre.utils.masking import MaskingGenerator
+from spectre.utils.dataloader import get_dataloader
 from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
 
 
@@ -100,7 +93,7 @@ def main(cfg):
     else:
         accelerator.print("No pretrained weights provided.")
 
-    vision_feature_comb = FeatureVisionTransformer(
+    vision_feature_comb = models.FeatureVisionTransformer(
         patch_dim=cfg.model.feature_comb.patch_dim,
         num_patches=cfg.model.feature_comb.num_patches,
         depth=cfg.model.feature_comb.depth,
@@ -118,8 +111,8 @@ def main(cfg):
     else:   
         accelerator.print("No pretrained weights provided.")
     
-    model_config = Qwen2Config.from_pretrained(cfg.model.text_encoder.text_encoder_config)
-    text_encoder = Qwen2Model(model_config)
+    model_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder.text_encoder_config)
+    text_encoder = models.Qwen2Model(model_config)
 
     if cfg.model.text_encoder.text_encoder_pretrained:
         accelerator.print(f"Loading pretrained weights from {cfg.model.text_encoder.text_encoder_pretrained}")
@@ -128,7 +121,7 @@ def main(cfg):
         accelerator.print("Pretrained weights loaded.")
     else:
         accelerator.print("No pretrained weights provided. Attempting to download pretrained weights.")
-        text_encoder = Qwen2Model.from_pretrained(cfg.model.text_encoder.text_encoder_config, trust_remote_code=True)
+        text_encoder = models.Qwen2Model.from_pretrained(cfg.model.text_encoder.text_encoder_config, trust_remote_code=True)
         accelerator.print("Pretrained weights downloaded.")
 
     # Initialize the SigLIP model
