@@ -7,7 +7,7 @@ from functools import partial
 import torch
 from torch.optim import AdamW
 from accelerate import Accelerator
-sys.path.append(r"C:\Users\20195435\OneDrive - TU Eindhoven\TUe\Projects\SPECTRE")
+
 import spectre.models as models
 from spectre.ssl.frameworks.vision_language import SigLIP3D
 from spectre.models.vits import VisionTransformer, FeatureVisionTransformer

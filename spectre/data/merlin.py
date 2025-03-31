@@ -16,10 +16,10 @@ class MerlinDataset(Dataset):
         transform: Callable = None,
         subset: str = "train"
     ):
-        image_paths = Path(data_dir).glob(os.path.join("MERLIN", "dataset", subset, "*", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join( "dataset", subset, "*", "*.nii.gz"))
         if include_reports:
             import pandas as pd
-            text_path = os.path.join(Path(data_dir), "MERLIN", "dataset", "reports.xlsx" )
+            text_path = os.path.join(Path(data_dir),  "dataset", "reports.xlsx" )
             reports = pd.read_excel(text_path)
 
             data = [{
@@ -49,10 +49,10 @@ class MerlinCacheDataset(PersistentDataset):
         transform: Callable = None,
         subset: str = "train"
     ):
-        image_paths = Path(data_dir).glob(os.path.join("MERLIN", "dataset", subset, "*", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join( "dataset", subset, "*", "*.nii.gz"))
         if include_reports:
             import pandas as pd
-            text_path = os.path.join(Path(data_dir), "MERLIN", "dataset", "reports.xlsx" )
+            text_path = os.path.join(Path(data_dir),  "dataset", "reports.xlsx" )
             reports = pd.read_excel(text_path)
 
             data = [{
