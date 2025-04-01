@@ -93,6 +93,7 @@ def main(cfg):
         cfg.model.architecture in models.__dict__ 
         and cfg.model.architecture.startswith("vit")
     ):
+        accelerator.print("vit backbone detected")
         image_backbone = models.__dict__[cfg.model.architecture](
             num_classes=0,
         )
