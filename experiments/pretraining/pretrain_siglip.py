@@ -5,6 +5,7 @@ from functools import partial
 import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
+from transformers import AutoTokenizer
 
 import spectre.models as models
 from spectre.ssl.frameworks import SigLIP
@@ -13,6 +14,7 @@ from spectre.ssl.transforms import SigLIPTransform
 from spectre.configs import default_config_siglip
 from spectre.utils.config import setup
 from spectre.utils.dataloader import get_dataloader
+from spectre.utils.collate import extended_collate_siglip
 from spectre.utils.scheduler import CosineWarmupScheduler
 
 
@@ -72,6 +74,12 @@ def main(cfg):
         )
     
     # Get dataloader
+    collate_fn = partial(
+        extended_collate_siglip,
+        tokenizer=AutoTokenizer.from_pretrained(
+            cfg.model.text_tokenizer, trust_remote_code=True
+        ),
+    )
     data_loader = get_dataloader(
         cfg.train.datasets,
         cfg.train.data_dir,
@@ -84,6 +92,7 @@ def main(cfg):
         num_workers=cfg.train.num_workers,
         pin_memory=True,
         shuffle=True,
+        collate_fn=collate_fn,
     )
 
     # Initialize backbone

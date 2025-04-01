@@ -30,6 +30,7 @@ model:
   feature_comb_embed_dim: 768
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12
+  text_tokenizer: infgrad/jasper_en_vision_language_v1
   text_encoder_config: infgrad/jasper_en_vision_language_v1
   text_encoder_weights: weights/text/jasper_en_vision_language_v1_base.pth
   projection_dim: 2048

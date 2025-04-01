@@ -77,7 +77,7 @@ class SigLIPTransform(Compose):
 
                 # load the text data
                 GenerateReportTransform(keys=("findings", "impressions", "icd10"), icd10_range_lower=0.1, likelyhood_original=0.5),
-                TokenizeTransform(keys=("image", "report"))
+                # TokenizeTransform(keys=("image", "report"))
 
             ]
         )
