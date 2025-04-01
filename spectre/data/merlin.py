@@ -1,12 +1,13 @@
 import os
-import pandas as pd
 from pathlib import Path
 from typing import Callable
+
 from monai.data import Dataset, PersistentDataset
-import torch
+
 
 def parse_name(image_path):
     return image_path.name.replace(".nii.gz", "")
+
 
 class MerlinDataset(Dataset):
     def __init__(
@@ -39,6 +40,7 @@ class MerlinDataset(Dataset):
             data = [{"image": str(image_path)} for image_path in image_paths]
 
         super().__init__(data=data, transform=transform)
+
 
 class MerlinCacheDataset(PersistentDataset):
     def __init__(

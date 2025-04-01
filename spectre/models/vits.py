@@ -492,7 +492,8 @@ class FeatureVisionTransformer(nn.Module):
         causal: bool = True
     ):
         """
-        A Vision Transformer that accepts already flattened embedding tokens from a previous layer as input (call them patches for consistency).
+        A Vision Transformer that accepts already flattened embedding tokens from a previous layer as input 
+        (call them patches for consistency).
 
         Args:
             patch_dim (int): Dimension of each flattened patch 
@@ -506,7 +507,8 @@ class FeatureVisionTransformer(nn.Module):
         """
         super().__init__()
         # Linear projection of flattened patches to embedding dimension.
-        self.patch_embedding = nn.Linear(patch_dim, embed_dim)
+        self.embed_dim = embed_dim
+        self.proj = nn.Linear(patch_dim, self.embed_dim)
         
         # Learnable classification token.
         self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
@@ -546,7 +548,7 @@ class FeatureVisionTransformer(nn.Module):
         b, n, _ = patches.shape
         
         # Project flattened patches to embedding dimension.
-        x = self.patch_embedding(patches)  # Shape: (b, n, embed_dim)
+        x = self.proj(patches)  # Shape: (b, n, embed_dim)
         
         # Prepend the class token to each sequence.
         cls_tokens = self.cls_token.expand(b, -1, -1)  # Shape: (b, 1, embed_dim)
@@ -563,7 +565,7 @@ class FeatureVisionTransformer(nn.Module):
             seq_len = x.size(0)
             # Create an upper-triangular matrix, where True indicates masked positions.
             causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
-            x = self.transformer(x, mask=causal_mask)
+            x = self.transformer(x, mask=causal_mask, is_causal=True)
         else:
             x = self.transformer(x)
         x = x.transpose(0, 1)

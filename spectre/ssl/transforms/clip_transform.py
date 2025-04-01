@@ -47,7 +47,7 @@ class CLIPTransform(Compose):
         )
 
 
-class SigLipTransform(Compose):
+class SigLIPTransform(Compose):
     def __init__(
             self, 
             input_size: Tuple[int, int, int] = (128, 128, 64),

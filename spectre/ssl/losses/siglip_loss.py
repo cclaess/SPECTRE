@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class SigLipLoss(nn.Module):
+
+class SigLIPLoss(nn.Module):
     def __init__(self, learnable_t=True, learnable_b=True, normalize=True, init_t=1.0, init_b=0.0):
         """
         SigLip loss for aligning image and text embeddings.
@@ -33,8 +34,8 @@ class SigLipLoss(nn.Module):
             torch.Tensor: Computed loss value.
         """
         if self.normalize:
-            zimg = F.normalize(zimg, dim=-1)
-            ztxt = F.normalize(ztxt, dim=-1)
+            zimg = F.normalize(zimg, p=2, dim=-1)
+            ztxt = F.normalize(ztxt, p=2, dim=-1)
 
         logits = torch.matmul(zimg, ztxt.T)  # Compute similarity matrix
         logits = logits * self.t + self.b  # Apply scaling and bias

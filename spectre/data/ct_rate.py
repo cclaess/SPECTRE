@@ -4,6 +4,7 @@ from typing import Callable
 
 from monai.data import Dataset, PersistentDataset
 
+
 class CTRateDataset(Dataset):
     def __init__(
         self, 
