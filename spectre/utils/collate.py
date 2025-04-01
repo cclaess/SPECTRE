@@ -96,11 +96,14 @@ def extended_collate_siglip(
     collated_data = list_data_collate(samples_list)
 
     tokenizer_output = tokenizer.batch_encode_plus(
-        collated_data["report"], add_special_tokens=True)
+        collated_data["report"], 
+        add_special_tokens=True,
+        padding=True,
+    )
     
     print("tokenizer_output", tokenizer_output)
     
-    collated_data["input_ids"] = tokenizer_output["input_ids"]
-    collated_data["attention_mask"] = tokenizer_output["attention_mask"]
+    collated_data["input_ids"] = torch.tensor(tokenizer_output["input_ids"])
+    collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
 
     return collated_data
