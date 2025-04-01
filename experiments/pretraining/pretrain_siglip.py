@@ -97,7 +97,9 @@ def main(cfg):
         image_backbone = models.__dict__[cfg.model.architecture](
             num_classes=0,
         )
+        accelerator.print("vit backbone initialized")
         backbone_embed_dim = image_backbone.embed_dim
+        accelerator.print("backbone embed dim: ", backbone_embed_dim)
     elif (
         cfg.model.architecture in models.__dict__
         and cfg.model.architecture.startswith("resnet")
