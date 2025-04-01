@@ -35,6 +35,6 @@ model:
   projection_dim: 2048
   learnable_t: true
   learnable_b: true
-  t_init: 1.0
-  b_init: 0.0
+  init_t: 1.0
+  init_b: 0.0
   normalize: true
