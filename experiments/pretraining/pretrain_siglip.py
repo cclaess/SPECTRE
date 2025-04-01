@@ -115,9 +115,12 @@ def main(cfg):
         depth=cfg.model.feature_comb_num_layers,
         heads=cfg.model.feature_comb_num_heads,
     )
+    accelerator.print("backbone and feature_comb initialized")
     
     text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
+    accelerator.print("text_config initialized")
     text_backbone = models.Qwen2Model(config=text_config)
+    accelerator.print("text_backbone initialized")
 
     # Initialize the SigLIP model
     model = SigLIP(
