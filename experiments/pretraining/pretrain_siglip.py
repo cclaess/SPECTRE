@@ -94,7 +94,7 @@ def main(cfg):
         image_backbone = models.__dict__[cfg.model.architecture](
             num_classes=0,
         )
-        backbone_embed_dim = image_backbone.embed_dim
+        image_backbone_embed_dim = image_backbone.embed_dim
     elif (
         cfg.model.architecture in models.__dict__
         and cfg.model.architecture.startswith("resnet")
@@ -104,12 +104,12 @@ def main(cfg):
             num_classes=0,
             norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
         )
-        backbone_embed_dim = image_backbone.num_features
+        image_backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
     image_feature_comb = models.FeatureVisionTransformer(
-        patch_dim=backbone_embed_dim,
+        patch_dim=image_backbone_embed_dim,
         embed_dim=cfg.model.feature_comb_embed_dim,
         num_patches=36,
         depth=cfg.model.feature_comb_num_layers,
@@ -117,6 +117,8 @@ def main(cfg):
     )
     
     text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
+    text_backbone_embed_dim = text_config.hidden_size
+    accelerator.print(f"Text backbone embed dim: {text_backbone_embed_dim}")
     text_backbone = models.Qwen2Model(config=text_config)
 
     # Initialize the SigLIP model
@@ -125,7 +127,7 @@ def main(cfg):
         text_backbone=text_backbone,
         image_feature_comb=image_feature_comb,
         image_embed_dim=image_feature_comb.embed_dim,
-        text_embed_dim=text_config.hidden_size,
+        text_embed_dim=text_backbone_embed_dim,
         projection_dim=cfg
     )
 
