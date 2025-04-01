@@ -118,7 +118,6 @@ def main(cfg):
     
     text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
     text_backbone_embed_dim = text_config.hidden_size
-    accelerator.print(f"Text backbone embed dim: {text_backbone_embed_dim}")
     text_backbone = models.Qwen2Model(config=text_config)
 
     # Initialize the SigLIP model
@@ -128,7 +127,7 @@ def main(cfg):
         image_feature_comb=image_feature_comb,
         image_embed_dim=image_feature_comb.embed_dim,
         text_embed_dim=text_backbone_embed_dim,
-        projection_dim=cfg
+        projection_dim=cfg.model.projection_dim,
     )
 
     # Intialize criterion

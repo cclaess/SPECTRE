@@ -32,6 +32,7 @@ model:
   feature_comb_num_heads: 12
   text_encoder_config: infgrad/jasper_en_vision_language_v1
   text_encoder_weights: weights/text/jasper_en_vision_language_v1_base.pth
+  projection_dim: 2048
   learnable_t: true
   learnable_b: true
   t_init: 1.0
