@@ -168,8 +168,8 @@ class TokenizeTransform(MapTransform):
         tokenizer_output = self.tokenizer(
             str(data[self.text_key]), add_special_tokens=True
         )
+        print("text", str(data[self.text_key]))
         print("tokenizer_output", tokenizer_output)
-        print("input ids", tokenizer_output["input_ids"])
         data["input_ids"] = tokenizer_output["input_ids"]
         data["attention_mask"] = tokenizer_output["attention_mask"]
         return data
