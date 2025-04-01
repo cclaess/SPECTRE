@@ -14,7 +14,8 @@ from spectre.ssl.transforms import DINOTransform
 from spectre.configs import default_config_dinov2
 from spectre.utils.config import setup
 from spectre.utils.models import update_momentum
-from spectre.utils.dataloader import get_dataloader, extended_collate
+from spectre.utils.collate import extended_collate_dino
+from spectre.utils.dataloader import get_dataloader
 from spectre.utils.masking import MaskingGenerator
 from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
 
@@ -88,7 +89,7 @@ def main(cfg):
 
     # Get dataloader
     collate_fn = partial(
-        extended_collate, 
+        extended_collate_dino, 
         mask_ratio=(cfg.model.mask_ratio_min, cfg.model.mask_ratio_max), 
         mask_probability=cfg.model.mask_probability, 
         n_tokens=backbone.patch_embed.num_patches,

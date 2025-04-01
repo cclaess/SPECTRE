@@ -14,7 +14,8 @@ from spectre.ssl.transforms import DINOTransform
 from spectre.configs import default_config_dino
 from spectre.utils.config import setup
 from spectre.utils.models import update_momentum
-from spectre.utils.dataloader import get_dataloader, extended_collate
+from spectre.utils.dataloader import get_dataloader
+from spectre.utils.collate import extended_collate_dino
 from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
 
 
@@ -85,7 +86,7 @@ def main(cfg):
         num_workers=cfg.train.num_workers,
         pin_memory=True,
         shuffle=True,
-        collate_fn=extended_collate,
+        collate_fn=extended_collate_dino,
     )
 
     # Initialize backbone
