@@ -2,7 +2,9 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from monai.data import Dataset, PersistentDataset
+from monai.data import Dataset
+
+from spectre.data.cache_dataset import CacheDataset
 
 
 def parse_name(image_path):
@@ -42,7 +44,7 @@ class MerlinDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class MerlinCacheDataset(PersistentDataset):
+class MerlinCacheDataset(CacheDataset):
     def __init__(
         self, 
         data_dir: str,

@@ -2,7 +2,9 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from monai.data import Dataset, PersistentDataset
+from monai.data import Dataset
+
+from spectre.data.cache_dataset import CacheDataset
 
 
 class AbdomenAtlasDataset(Dataset):
@@ -27,7 +29,7 @@ class AbdomenAtlasDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class AbdomenAtlasCacheDataset(PersistentDataset):
+class AbdomenAtlasCacheDataset(CacheDataset):
     def __init__(
         self, 
         data_dir: str,

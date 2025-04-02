@@ -2,7 +2,9 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from monai.data import Dataset, PersistentDataset
+from monai.data import Dataset
+
+from spectre.data.cache_dataset import CacheDataset
 
 
 class PanoramaDataset(Dataset):
@@ -17,7 +19,7 @@ class PanoramaDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class PanoramaCacheDataset(PersistentDataset):
+class PanoramaCacheDataset(CacheDataset):
     def __init__(
         self, 
         data_dir: str,

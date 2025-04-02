@@ -2,7 +2,9 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from monai.data import Dataset, PersistentDataset
+from monai.data import Dataset
+
+from spectre.data.cache_dataset import CacheDataset
 
 
 class NlstDataset(Dataset):
@@ -17,7 +19,7 @@ class NlstDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class NlstCacheDataset(PersistentDataset):
+class NlstCacheDataset(CacheDataset):
     def __init__(
         self, 
         data_dir: str,

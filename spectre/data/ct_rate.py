@@ -2,7 +2,9 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from monai.data import Dataset, PersistentDataset
+from monai.data import Dataset
+
+from spectre.data.cache_dataset import CacheDataset
 
 
 class CTRateDataset(Dataset):
@@ -36,7 +38,7 @@ class CTRateDataset(Dataset):
         super().__init__(data=data, transform=transform)
 
 
-class CTRateCacheDataset(PersistentDataset):
+class CTRateCacheDataset(CacheDataset):
     def __init__(
         self, 
         data_dir: str,
