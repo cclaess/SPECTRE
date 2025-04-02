@@ -18,7 +18,7 @@ class CacheDataset(PersistentDataset):
     """
     Overwrite MONAI's PersistentDataset to support PyTorch 2.6.
     """
-    def __init__(*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
     def _cachecheck(self, item_transformed):
