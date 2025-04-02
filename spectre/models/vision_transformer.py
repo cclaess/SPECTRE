@@ -236,7 +236,7 @@ class VisionTransformer(nn.Module):
         self.head_drop = nn.Dropout(drop_rate)
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-        # self.init_weights()
+        self.init_weights()
 
     def init_weights(self) -> None:
         if self.pos_embed is not None:
@@ -253,8 +253,6 @@ class VisionTransformer(nn.Module):
             nn.init.trunc_normal_(m.weight, std=.02)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
-        elif hasattr(m, 'init_weights'):
-            m.init_weights()
 
     @torch.jit.ignore
     def no_weight_decay(self) -> Set:
@@ -477,10 +475,30 @@ class VisionTransformer(nn.Module):
         x = self.forward_features(x)
         x = self.forward_head(x, pre_logits=pre_logits)
         return x
+    
+    @classmethod
+    def from_pretrained(
+            cls,
+            checkpoint_path: str,
+            verbose: bool = True,
+            **kwargs
+    ) -> 'VisionTransformer':
+        """Load pretrained model weights."""
+        model = cls(**kwargs)
+        state_dict = torch.load(checkpoint_path, map_location='cpu')
+        msg = model.load_state_dict(state_dict, strict=False)
+        if verbose:
+            print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
+        return model
 
 
-def vit_tiny_patch16_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+def vit_tiny_patch16_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Tiny model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(16, 16, 8),
         embed_dim=192,
@@ -489,12 +507,20 @@ def vit_tiny_patch16_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
 
-def vit_small_patch16_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+
+def vit_small_patch16_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Small model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(16, 16, 8),
         embed_dim=384,
@@ -503,12 +529,20 @@ def vit_small_patch16_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
 
-def vit_base_patch16_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+
+def vit_base_patch16_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Base model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(16, 16, 8),
         embed_dim=768,
@@ -517,12 +551,20 @@ def vit_base_patch16_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
+    
 
-def vit_base_patch32_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+def vit_base_patch32_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Base model with 3D patch embedding, patch size [32, 32, 16] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(32, 32, 16),
         embed_dim=768,
@@ -531,6 +573,8 @@ def vit_base_patch32_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)

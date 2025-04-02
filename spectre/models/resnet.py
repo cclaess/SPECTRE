@@ -583,36 +583,121 @@ class ResNet(nn.Module):
         x = self.forward_head(x)
         return x
     
-
-def resnet18(*args, **kwargs):
-    return ResNet(BasicBlock, [2, 2, 2, 2], *args, **kwargs)
-
-
-def resnet34(*args, **kwargs):
-    return ResNet(BasicBlock, [3, 4, 6, 3], *args, **kwargs)
-
-
-def resnet50(*args, **kwargs):
-    return ResNet(Bottleneck, [3, 4, 6, 3], *args, **kwargs)
-
-
-def resnet101(*args, **kwargs):
-    return ResNet(Bottleneck, [3, 4, 23, 3], *args, **kwargs)
-
-
-def resnext50(**kwargs):
-    return ResNet(Bottleneck, [3, 4, 6, 3], cardinality=32, base_width=4, **kwargs)
-
-
-def resnext101(**kwargs):
-    return ResNet(Bottleneck, [3, 4, 23, 3], cardinality=32, base_width=8, **kwargs)
-
-
-if __name__ == '__main__':
+    @classmethod
+    def from_pretrained(
+            cls,
+            checkpoint_path: str,
+            verbose: bool = True,
+            **kwargs
+    ) -> 'ResNet':
+        """Load pretrained model weights."""
+        model = cls(**kwargs)
+        state_dict = torch.load(checkpoint_path, map_location='cpu')
+        msg = model.load_state_dict(state_dict, strict=False)
+        if verbose:
+            print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
+        return model
     
-    # Push a random tensor through the model
-    model = resnext101()
-    x = torch.randn(1, 1, 128, 128, 64)
 
-    y = model(x)
-    print(y.shape)
+def resnet18(
+    pretrained_weights: Optional[str] = None,
+    **kwargs
+) -> ResNet:
+    """ResNet-18 model with 3D operations.
+    """
+    kwargs = dict(
+        block=BasicBlock,
+        layers=[2, 2, 2, 2],
+        cardinality=1,
+        **kwargs,
+    )
+    if pretrained_weights:
+        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    return ResNet(**kwargs)
+
+
+def resnet34(
+    pretrained_weights: Optional[str] = None,
+    **kwargs
+) -> ResNet:
+    """ResNet-34 model with 3D operations.
+    """
+    kwargs = dict(
+        block=BasicBlock,
+        layers=[3, 4, 6, 3],
+        cardinality=1,
+        **kwargs,
+    )
+    if pretrained_weights:
+        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    return ResNet(**kwargs)
+
+
+def resnet50(
+    pretrained_weights: Optional[str] = None,
+    **kwargs
+) -> ResNet:
+    """ResNet-50 model with 3D operations.
+    """
+    kwargs = dict(
+        block=Bottleneck,
+        layers=[3, 4, 6, 3],
+        cardinality=1,
+        **kwargs,
+    )
+    if pretrained_weights:
+        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    return ResNet(**kwargs)
+
+
+def resnet101(
+    pretrained_weights: Optional[str] = None,
+    **kwargs
+) -> ResNet:
+    """ResNet-101 model with 3D operations.
+    """
+    kwargs = dict(
+        block=Bottleneck,
+        layers=[3, 4, 23, 3],
+        cardinality=1,
+        **kwargs,
+    )
+    if pretrained_weights:
+        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    return ResNet(**kwargs)
+
+
+def resnext50(
+    pretrained_weights: Optional[str] = None,
+    **kwargs
+) -> ResNet:
+    """ResNeXt-50 model with 3D operations.
+    """
+    kwargs = dict(
+        block=Bottleneck,
+        layers=[3, 4, 6, 3],
+        cardinality=32,
+        base_width=4,
+        **kwargs,
+    )
+    if pretrained_weights:
+        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    return ResNet(**kwargs)
+
+
+def resnext101(
+    pretrained_weights: Optional[str] = None,
+    **kwargs
+) -> ResNet:
+    """ResNeXt-101 model with 3D operations.
+    """
+    kwargs = dict(
+        block=Bottleneck,
+        layers=[3, 4, 23, 3],
+        cardinality=32,
+        base_width=8,
+        **kwargs,
+    )
+    if pretrained_weights:
+        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    return ResNet(**kwargs)
