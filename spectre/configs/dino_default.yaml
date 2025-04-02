@@ -32,6 +32,7 @@ optim:
   adamw_beta2: 0.999
 model:
   architecture: vit_base_patch16_128
+  pretrained_weights: null
   hidden_dim: 2048
   bottleneck_dim: 256
   output_dim: 65536

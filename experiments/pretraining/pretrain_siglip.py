@@ -97,19 +97,21 @@ def main(cfg):
 
     # Initialize backbone
     if (
-        cfg.model.architecture in models.__dict__ 
+        hasattr(models, cfg.model.architecture) 
         and cfg.model.architecture.startswith("vit")
     ):
-        image_backbone = models.__dict__[cfg.model.architecture](
+        image_backbone = getattr(models, cfg.model.architecture)(
+            pretrained_weights=cfg.model.pretrained_weights,
             num_classes=0,
         )
         image_backbone_embed_dim = image_backbone.embed_dim
     elif (
-        cfg.model.architecture in models.__dict__
+        hasattr(models, cfg.model.architecture)
         and cfg.model.architecture.startswith("resnet")
         or cfg.model.architecture.startswith("resnext")
     ):
-        image_backbone = models.__dict__[cfg.model.architecture](
+        image_backbone = getattr(models, cfg.model.architecture)(
+            pretrained_weights=cfg.model.pretrained_weights,
             num_classes=0,
             norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
         )

@@ -32,6 +32,7 @@ optim:
   norm_pix_loss: false
 model:
   architecture: vit_base_patch16_128
+  pretrained_weights: null
   mask_ratio: 0.75
   decoder_dim: 512
   decoder_depth: 8
