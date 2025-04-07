@@ -41,7 +41,7 @@ class SigLIP(nn.Module):
     ):
         """
         Args:
-            images: Tensor of shape (batch, crops, height, width, depth)
+            images: Tensor of shape (batch, crops, channel, height, width, depth)
             text_tokens: Tensor of shape (batch, sequence_length)
             attention_mask: Tensor of shape (batch, sequence_length)
 
@@ -50,13 +50,13 @@ class SigLIP(nn.Module):
             logits_per_text: Tensor (batch, batch) with similarity scores.
         """
         # reshape input to be (batch x crops, 1,  height, width, depth)
-        B, C, H, W, D = images.shape
-        images = images.view(B*C, 1, H, W, D)
+        B, N, C, H, W, D = images.shape
+        images = images.view(B*N, C, H, W, D)
 
         # Compute image embeddings
         image_embeddings = self.image_backbone(images)
         if self.image_feature_comb is not None:
-            image_embeddings = self.image_feature_comb(image_embeddings.view(B, C, -1)) # (batch, embed_dim)
+            image_embeddings = self.image_feature_comb(image_embeddings.view(B, N, -1)) # (batch, embed_dim)
         image_embeddings = self.image_projection(image_embeddings) # (batch, embed_dim)
 
         # Compute text embeddings
