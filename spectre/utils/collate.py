@@ -95,7 +95,8 @@ def extended_collate_siglip(
     # Apply MONAI's list_data_collate
     print(len(samples_list))
     print(len(samples_list[0]))
-    
+    print(samples_list[0])
+
     collated_data = list_data_collate(samples_list)
 
     print(collated_data["image"].shape)
