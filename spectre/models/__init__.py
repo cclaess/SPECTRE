@@ -15,5 +15,3 @@ from .resnet import (
     resnext50,
     resnext101,
 )
-from .tokenizer_qwen import Qwen2Tokenizer, Qwen2TokenizerFast
-from .text_encoder_qwen import Qwen2Model, Qwen2Config
