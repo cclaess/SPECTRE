@@ -6,6 +6,7 @@ train:
   - inspect
   - merlin
   - nlst
+  - amos
   - abdomen_atlas
   - panorama
   - abdomenct_1k

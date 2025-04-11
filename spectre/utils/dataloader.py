@@ -90,6 +90,19 @@ def get_dataloader(
                 from spectre.data import NlstDataset
                 datasets_list.append(NlstDataset(**kwargs))
         
+        # Amos dataset with abdominal CT
+        elif dataset == "amos":
+            kwargs = {
+                "data_dir": os.path.join(data_dir, "Amos"),
+                "transform": transform,
+            }
+            if cache_dataset:
+                from spectre.data import AmosCacheDataset
+                datasets_list.append(AmosCacheDataset(**kwargs, cache_dir=cache_dir))
+            else:
+                from spectre.data import AmosDataset
+                datasets_list.append(AmosDataset(**kwargs))
+        
         # AbdomenAtlas 1.0 Mini dataset with abdominal CT and organ segmentations
         elif dataset == "abdomen_atlas":
             kwargs = {
