@@ -16,7 +16,7 @@ from spectre.utils.config import setup
 from spectre.utils.dataloader import get_dataloader
 from spectre.utils.collate import extended_collate_siglip
 from spectre.utils.scheduler import CosineWarmupScheduler
-
+from transformers import AutoModel, AutoConfig
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -127,12 +127,18 @@ def main(cfg):
         heads=cfg.model.feature_comb_num_heads,
     )
     
-    text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
-    text_backbone_embed_dim = text_config.hidden_size
-    text_backbone = models.Qwen2Model.from_pretrained(
-        cfg.model.text_encoder_weights,
-        config=text_config
-    )
+    # text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
+    # text_backbone_embed_dim = text_config.hidden_size
+    # text_backbone = models.Qwen2Model.from_pretrained(
+    #     cfg.model.text_encoder_weights,
+    #     config=text_config
+    # )
+
+    
+
+    text_backbone = AutoModel.from_pretrained(cfg.model.text_encoder_config,
+                                               trust_remote_code=True)
+    text_backbone_embed_dim = text_backbone.config.hidden_size
 
     # Initialize the SigLIP model
     model = SigLIP(
