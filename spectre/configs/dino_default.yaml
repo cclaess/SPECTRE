@@ -1,5 +1,5 @@
 train:
-  batch_size_per_gpu: 1024
+  batch_size_per_gpu: 128
   grad_accum_steps: 1
   datasets:
   - ct_rate
@@ -10,13 +10,13 @@ train:
   - abdomen_atlas
   - panorama
   - abdomenct_1k
-  data_dir: ./datasets
+  data_dir: /data/
   output_dir: .
   saveckp_freq: 20
   seed: 0
   num_workers: 10
   cache_dataset: true
-  cache_dir: ./cache/monai/
+  cache_dir: /data/cache/monai/
   log_wandb: true
   log_freq: 1
 optim:
