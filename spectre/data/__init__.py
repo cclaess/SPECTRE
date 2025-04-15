@@ -1,4 +1,5 @@
 from .ct_rate import CTRateDataset, CTRateCacheDataset
+from .inspect import InspectDataset, InspectCacheDataset
 from .merlin import MerlinDataset, MerlinCacheDataset
 from .nlst import NlstDataset, NlstCacheDataset
 from .abdomen_atlas import AbdomenAtlasDataset, AbdomenAtlasCacheDataset

@@ -14,7 +14,7 @@ class AbdomenCT1KDataset(Dataset):
         include_labels: bool = False, 
         transform: Callable = None
     ):
-        image_paths = Path(data_dir).glob(os.path.join("Case*.nii.gz"))
+        image_paths = Path(data_dir).glob("Case*.nii.gz")
 
         if include_labels:
             label_paths = Path(data_dir).glob(os.path.join("Mask", "Case*.nii.gz"))
@@ -37,10 +37,10 @@ class AbdomenCT1KCacheDataset(CacheDataset):
         include_labels: bool = False, 
         transform: Callable = None
     ):
-        image_paths = Path(data_dir).glob(os.path.join("Case*.nii.gz"))
+        image_paths = Path(data_dir).glob("Case*.nii.gz")
 
         if include_labels:
-            label_paths = Path(data_dir).glob(os.path.join("*", "combined_labels.nii.gz"))
+            label_paths = Path(data_dir).glob(os.path.join("Mask", "Case*.nii.gz"))
 
             data = [{
                 "image": str(image_path),

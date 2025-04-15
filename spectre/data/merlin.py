@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Callable
 
+import pandas as pd
 from monai.data import Dataset
 
 from spectre.data.cache_dataset import CacheDataset
@@ -19,12 +20,13 @@ class MerlinDataset(Dataset):
         transform: Callable = None,
         subset: str = "train"
     ):
-        image_paths = Path(data_dir).glob(os.path.join( "dataset", subset, "*", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join("merlinabdominalctdataset", "merlin_data", "*.nii.gz"))
+        text_path = Path(data_dir) / "merlinabdominalctdataset" / "reports_final_updated.xlsx"
+        reports = pd.read_excel(text_path)
+        image_paths = [p for p in image_paths if \
+            reports[reports["study id"] == parse_name(p)]["Split"].values[0] == subset]
+        
         if include_reports:
-            import pandas as pd
-            text_path = os.path.join(Path(data_dir),  "dataset", "reports.xlsx" )
-            reports = pd.read_excel(text_path)
-
             data = [{
                 "image": str(image_path),
                 "findings": [reports[reports["study id"] == parse_name(image_path)]["Findings_0"].values[0],
@@ -53,12 +55,13 @@ class MerlinCacheDataset(CacheDataset):
         transform: Callable = None,
         subset: str = "train"
     ):
-        image_paths = Path(data_dir).glob(os.path.join( "dataset", subset, "*", "*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join("merlinabdominalctdataset", "merlin_data", "*.nii.gz"))
+        text_path = Path(data_dir) / "merlinabdominalctdataset" / "reports_final_updated.xlsx"
+        reports = pd.read_excel(text_path)
+        image_paths = [p for p in image_paths if \
+            reports[reports["study id"] == parse_name(p)]["Split"].values[0] == subset]
+        
         if include_reports:
-            import pandas as pd
-            text_path = os.path.join(Path(data_dir),  "dataset", "reports.xlsx" )
-            reports = pd.read_excel(text_path)
-
             data = [{
                 "image": str(image_path),
                 "findings": [reports[reports["study id"] == parse_name(image_path)]["Findings_0"].values[0],

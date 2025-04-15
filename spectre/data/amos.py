@@ -13,7 +13,7 @@ class AmosDataset(Dataset):
         data_dir: str, 
         transform: Callable = None
     ):
-        image_paths = Path(data_dir).glob(os.path.join("*/*/amos_*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join("*", "*", "amos_*.nii.gz"))
         data = [{"image": str(image_path)} for image_path in image_paths]
 
         super().__init__(data=data, transform=transform)
@@ -26,7 +26,7 @@ class AmosCacheDataset(CacheDataset):
         cache_dir: str,
         transform: Callable = None
     ):
-        image_paths = Path(data_dir).glob(os.path.join("*/*/amos_*.nii.gz"))
+        image_paths = Path(data_dir).glob(os.path.join("*", "*", "amos_*.nii.gz"))
         data = [{"image": str(image_path)} for image_path in image_paths]
 
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
