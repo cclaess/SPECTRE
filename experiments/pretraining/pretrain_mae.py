@@ -1,6 +1,9 @@
 import os
+import random
 import argparse
 
+import torch
+import numpy as np
 from torch.nn import MSELoss
 from torch.optim import AdamW
 from accelerate import Accelerator
@@ -12,6 +15,7 @@ from spectre.configs import default_config_mae
 from spectre.utils.config import setup
 from spectre.utils.dataloader import get_dataloader
 from spectre.utils.scheduler import CosineWarmupScheduler
+from spectre.utils.checkpointing import load_state, save_state
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -136,13 +140,25 @@ def main(cfg):
     # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
 
+    # Load checkpoint if specified
+    if cfg.train.resume_ckp:
+        start_epoch = load_state(
+            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
+            model=unwrapped_model,
+            optimizer=optimizer, 
+            lr_scheduler=lr_scheduler,
+            criterion=criterion, 
+        )
+    else:
+        start_epoch: int = 0
+    
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
 
     # Start training
-    global_step: int = 0
-    for epoch in range(cfg.optim.epochs):
+    global_step: int = start_epoch * len(data_loader)
+    for epoch in range(start_epoch, cfg.optim.epochs):
         model.train()
         for batch in data_loader:
             
@@ -186,12 +202,29 @@ def main(cfg):
                 # Update global step
                 global_step += 1
 
-        if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
-            accelerator.save_model(
-                model,
-                os.path.join(
-                    cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}"
-                ),
+        # Save checkpoint
+        save_state(
+            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
+            epoch=epoch,
+            model=unwrapped_model,
+            optimizer=optimizer,
+            lr_scheduler=lr_scheduler,
+            criterion=criterion,
+            torch_random_state=torch.random.get_rng_state(),
+            numpy_random_state=tuple(np.random.get_state()),
+            random_random_state=random.getstate(),
+        )
+        if (epoch + 1) % cfg.train.saveckp_freq == 0:
+            save_state(
+                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1: 04}.pt"),
+                epoch=epoch,
+                model=unwrapped_model,
+                optimizer=optimizer,
+                lr_scheduler=lr_scheduler,
+                criterion=criterion,
+                torch_random_state=torch.random.get_rng_state(),
+                numpy_random_state=tuple(np.random.get_state()),
+                random_random_state=random.getstate(),
             )
 
     # Make sure the trackers are finished before exiting

@@ -13,6 +13,7 @@ train:
   data_dir: /data/
   output_dir: .
   saveckp_freq: 20
+  resume_ckp: true
   seed: 0
   num_workers: 10
   cache_dataset: true
