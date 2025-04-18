@@ -18,6 +18,8 @@ def get_dataloader(
     pin_memory: bool = True,
     shuffle: bool = True,
     collate_fn: Optional[Callable] = None,
+    drop_last: bool = True,
+    persistent_workers: bool = True,
 ) -> DataLoader:
     """
     Get dataloader for training.
@@ -162,6 +164,8 @@ def get_dataloader(
             pin_memory=pin_memory,
             shuffle=shuffle,
             collate_fn=collate_fn,
+            drop_last=drop_last,
+            persistent_workers=persistent_workers,
         )
     else:
         dataloader = DataLoader(
@@ -170,5 +174,7 @@ def get_dataloader(
             num_workers=num_workers,
             pin_memory=pin_memory,
             shuffle=shuffle,
+            drop_last=drop_last,
+            persistent_workers=persistent_workers,
         )  # Cannot pass None to use MONAI collate_fn
     return dataloader
