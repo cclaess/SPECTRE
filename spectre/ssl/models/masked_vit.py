@@ -1,11 +1,12 @@
 import math
-from typing import Optional
+from typing import Optional, Tuple, List
 
 import torch
 import torch.nn as nn
 
 from spectre.models import VisionTransformer
 from spectre.utils.models import (
+    mask_bool,
     get_at_index, 
     mask_at_index,
     resample_abs_pos_embed,
@@ -18,7 +19,7 @@ class MaskedVisionTransformer(nn.Module):
     Attributes:
         vit: The VisionTransformer object.
         mask_token: The mask token.
-
+        use_mask_token: Whether to use the mask token.
     """
 
     def __init__(
@@ -33,6 +34,7 @@ class MaskedVisionTransformer(nn.Module):
             if mask_token is not None
             else nn.Parameter(torch.zeros(1, 1, self.vit.embed_dim))
         )
+
         self._initialize_weights()
 
     @property
@@ -74,12 +76,38 @@ class MaskedVisionTransformer(nn.Module):
         elif self.vit.global_pool:
             x = x[:, 0]  # class token
         return x
+    
+    def forward_intermediates(
+        self,
+        images: torch.Tensor,
+        idx_mask: Optional[torch.Tensor] = None,
+        idx_keep: Optional[torch.Tensor] = None,
+        norm: bool = False,
+        mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        # preprocess images, convert to tokens and add positional embeddings
+        tokens = self.preprocess(
+            images=images, idx_mask=idx_mask, idx_keep=idx_keep, mask=mask
+        )
+        # normalization layer
+        tokens = self.vit.norm_pre(tokens)
+
+        intermediates: List[torch.Tensor] = []
+        for blk in self.vit.blocks:
+            tokens = blk(tokens)
+            intermediates.append(self.vit.norm(tokens) if norm else tokens)
+
+        # normalize
+        out: torch.Tensor = self.vit.norm(tokens)
+
+        return out, intermediates
 
     def encode(
         self,
         images: torch.Tensor,
         idx_mask: Optional[torch.Tensor] = None,
         idx_keep: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Encode input images.
 
@@ -94,29 +122,83 @@ class MaskedVisionTransformer(nn.Module):
                 Tensor with shape (batch_size, num_tokens_to_keep) where each
                 entry is an index of the token to keep in the respective batch.
                 If specified, only the indexed tokens will be encoded.
-
+            mask:
+                Tensor with shape (batch_size, sequence_length) indicating which tokens
+                should be masked. Tokens where the mask is True will be masked with
+                self.mask_token.
         Returns:
             Batch of encoded output tokens.
         """
+        tokens: torch.Tensor = self.preprocess(
+            images=images, idx_mask=idx_mask, idx_keep=idx_keep, mask=mask
+        )
+        # normalization layer
+        tokens = self.vit.norm_pre(tokens)
+        # apply Transformer blocks
+        tokens = self.vit.blocks(tokens)
+        # normalize
+        tokens = self.vit.norm(tokens)
+        return tokens
+
+    def preprocess(
+        self,
+        images: torch.Tensor,
+        idx_mask: Optional[torch.Tensor] = None,
+        idx_keep: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Convert images to tokens, add positional embeddings, and apply masking.
+
+        Args:
+            images:
+                Tensor with shape (batch_size, channels, image_height, image_width).
+            idx_mask:
+                Tensor with shape (batch_size, num_tokens_to_mask) where each
+                entry is an index of the token to mask in the respective batch.
+                Indices must be in the range [0, sequence_length).
+                If specified, the indexed tokens are masked with self.mask_token.
+                Cannot be used in combination with mask argument.
+            idx_keep:
+                Tensor with shape (batch_size, num_tokens_to_keep) where each
+                entry is an index of the token to keep in the respective batch.
+                Indices must be in the range [0, sequence_length).
+                If set, only the indexed tokens will be returned.
+                Is applied after any masking operation.
+            mask:
+                Tensor with shape (batch_size, sequence_length) indicating which tokens
+                should be masked. Tokens where the mask is True will be masked with
+                self.mask_token.
+
+        Returns:
+            Tensor with shape (batch_size, sequence_length, embed_dim) containing the
+            preprocessed tokens. If idx_keep is set, only num_tokens_to_keep tokens
+            per sequence are returned. Any class or prefix tokens are prepended to the
+            sequence.
+        """
+        if idx_mask is not None and mask is not None:
+            raise ValueError("idx_mask and mask cannot both be set at the same time.")
+
         # convert images to tokens
-        input = self.images_to_tokens(images)
+        tokens = self.images_to_tokens(images)
         # add prefix tokens if needed
-        input = self.add_prefix_tokens(input)
+        tokens = self.prepend_prefix_tokens(tokens)
 
         if idx_mask is not None:
-            input = mask_at_index(input, idx_mask, self.mask_token)
+            tokens = mask_at_index(
+                tokens=tokens, index=idx_mask, mask_token=self.mask_token
+            )
+        elif mask is not None:
+            tokens = mask_bool(
+                tokens=tokens, mask=mask, mask_token=self.mask_token
+            )
+
         # add positional encoding
-        input = self.add_pos_embed(input)
+        tokens = self.add_pos_embed(tokens)
 
         if idx_keep is not None:
-            input = get_at_index(input, idx_keep)
-        # normalization layer
-        input = self.vit.norm_pre(input)
-        # apply Transformer blocks
-        input = self.vit.blocks(input)
-        # normalize
-        out: torch.Tensor = self.vit.norm(input)
-        return out
+            tokens = get_at_index(tokens, idx_keep)
+
+        return tokens
 
     def images_to_tokens(self, images: torch.Tensor) -> torch.Tensor:
         """Converts images into patch tokens.
@@ -135,7 +217,7 @@ class MaskedVisionTransformer(nn.Module):
             tokens = tokens.flatten(2).transpose(1, 2)  # NCHWD -> NLC
         return tokens
 
-    def add_prefix_tokens(self, x: torch.Tensor) -> torch.Tensor:
+    def prepend_prefix_tokens(self, x: torch.Tensor) -> torch.Tensor:
         """Adds prefix tokens to image patch tokens.
 
         Args:
@@ -172,16 +254,16 @@ class MaskedVisionTransformer(nn.Module):
         x = x[:, self.vit.num_prefix_tokens :, :]
         if self.vit.dynamic_img_size:
             x = x.transpose(1, 2)  # NLC -> NCL
-            total_size = torch.numel(x)
             batch_size = x.size(0)
             num_channels = x.size(1)
-            grid_size = int(math.pow(total_size / (batch_size * num_channels), 1/3))
+            grid_size = round(math.pow(x.size(2), 1 / 3))
+            grid_size = (grid_size, grid_size, grid_size)
             x = x.view(
                 batch_size,
                 num_channels,
-                grid_size,
-                grid_size,
-                grid_size,
+                grid_size[0],
+                grid_size[1],
+                grid_size[2],
             )  # NCL -> NCHWD
 
             # NCHWD -> NHWDC
@@ -189,10 +271,11 @@ class MaskedVisionTransformer(nn.Module):
             B, H, W, D, C = x.shape
             pos_embed = resample_abs_pos_embed(
                 self.vit.pos_embed,
-                (D, H, W),
+                (H, W, D),
                 num_prefix_tokens=(
                     0 if self.vit.no_embed_class else self.vit.num_prefix_tokens
                 ),
+                old_size=self.vit.patch_embed.grid_size,
             )
             x = x.view(B, -1, C)
         else:
@@ -213,10 +296,11 @@ class MaskedVisionTransformer(nn.Module):
         # Initialize the patch embedding layer like a linear layer instead of conv
         # layer.
         w = self.vit.patch_embed.proj.weight.data
-        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
         # Initialize the class token.
-        torch.nn.init.normal_(self.vit.cls_token, std=0.02)
+        if self.vit.has_class_token:
+            nn.init.normal_(self.vit.cls_token, std=0.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
@@ -225,7 +309,7 @@ class MaskedVisionTransformer(nn.Module):
         #     pos_embedding=self.vit.pos_embed, has_class_token=self.vit.has_class_token
         # )
 
-    def _init_weights(module: nn.Module) -> None:
+    def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             nn.init.xavier_uniform_(module.weight)
             if isinstance(module, nn.Linear) and module.bias is not None:

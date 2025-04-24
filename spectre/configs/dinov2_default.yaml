@@ -45,3 +45,9 @@ model:
   warmup_teacher_temp_epochs: 30
   student_temp: 0.1
   center_momentum: 0.9
+  mask_ratio_min: 0.1
+  mask_ratio_max: 0.5
+  mask_probability: 0.5
+  dino_loss_weight: 1.0
+  koleo_loss_weight: 0.1
+  ibot_loss_weight: 1.0

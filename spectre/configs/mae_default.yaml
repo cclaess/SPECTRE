@@ -1,0 +1,41 @@
+train:
+  batch_size_per_gpu: 128
+  grad_accum_steps: 1
+  datasets:
+  - ct_rate
+  - inspect
+  - merlin
+  - nlst
+  - amos
+  - abdomen_atlas
+  - panorama
+  - abdomenct_1k
+  data_dir: /data/
+  output_dir: .
+  saveckp_freq: 20
+  resume_ckp: true
+  seed: 0
+  num_workers: 10
+  cache_dataset: true
+  cache_dir: /data/cache/monai/
+  log_wandb: true
+  log_freq: 1
+optim:
+  epochs: 100
+  weight_decay: 0.05
+  base_lr: 0.001
+  lr: 0.  # will be set after applying scaling rule
+  warmup_epochs: 40
+  min_lr: 1.0e-06
+  clip_grad_norm: 3.0
+  scaling_rule: sqrt_wrt_1024
+  adamw_beta1: 0.9
+  adamw_beta2: 0.95
+  norm_pix_loss: false
+model:
+  architecture: vit_base_patch16_128
+  pretrained_weights: null
+  mask_ratio: 0.75
+  decoder_dim: 512
+  decoder_depth: 8
+  decoder_num_heads: 16

@@ -5,15 +5,9 @@ train:
   - ct_rate
   - inspect
   - merlin
-  - nlst
-  - amos
-  - abdomen_atlas
-  - panorama
-  - abdomenct_1k
   data_dir: /data/
   output_dir: .
   saveckp_freq: 20
-  resume_ckp: true
   seed: 0
   num_workers: 10
   cache_dataset: true
@@ -22,8 +16,6 @@ train:
   log_freq: 1
 optim:
   epochs: 100
-  weight_decay: 0.04
-  weight_decay_end: 0.4
   base_lr: 0.004
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 10
@@ -35,13 +27,15 @@ optim:
 model:
   architecture: vit_base_patch16_128
   pretrained_weights: null
-  hidden_dim: 2048
-  bottleneck_dim: 256
-  output_dim: 65536
-  momentum_teacher: 0.992
-  momentum_teacher_end: 0.999
-  warmup_teacher_temp: 0.04
-  teacher_temp: 0.04
-  warmup_teacher_temp_epochs: 30
-  student_temp: 0.1
-  center_momentum: 0.9
+  feature_comb_embed_dim: 768
+  feature_comb_num_layers: 4
+  feature_comb_num_heads: 12
+  text_tokenizer: infgrad/jasper_en_vision_language_v1
+  text_encoder_config: infgrad/jasper_en_vision_language_v1
+  text_encoder_weights: weights/text/jasper_en_vision_language_v1_base.pth
+  projection_dim: 2048
+  learnable_t: true
+  learnable_b: true
+  init_t: 1.0
+  init_b: 0.0
+  normalize: true

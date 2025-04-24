@@ -38,7 +38,6 @@ class DINOProjectionHead(nn.Module):
             training unstable.
 
     """
-
     def __init__(
         self,
         input_dim: int = 2048,

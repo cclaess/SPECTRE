@@ -1,21 +1,22 @@
 import os
-import random
 import argparse
+from functools import partial
 
-import torch
-import numpy as np
-from torch.nn import MSELoss
+import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
+from transformers import AutoTokenizer
 
 import spectre.models as models
-from spectre.ssl.frameworks import MAE
-from spectre.ssl.transforms import MAETransform
-from spectre.configs import default_config_mae
+from spectre.ssl.frameworks import SigLIP
+from spectre.ssl.losses import SigLIPLoss
+from spectre.ssl.transforms import SigLIPTransform
+from spectre.configs import default_config_siglip
 from spectre.utils.config import setup
 from spectre.utils.dataloader import get_dataloader
+from spectre.utils.collate import extended_collate_siglip
 from spectre.utils.scheduler import CosineWarmupScheduler
-from spectre.utils.checkpointing import load_state, save_state
+from transformers import AutoModel, AutoConfig
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -23,11 +24,11 @@ def get_args_parser() -> argparse.ArgumentParser:
     Load arguments from config file. If argument is specified in command line, 
     it will override the value in config file.
     """
-    parser = argparse.ArgumentParser(description="Pretrain MAE")
+    parser = argparse.ArgumentParser(description="Pretrain SigLIP")
     parser.add_argument(
         "--config_file",
         type=str,
-        default="spectre/configs/mae_default.yaml",
+        default="configs/siglip_default.yaml",
         help="path to config file",
     )
     parser.add_argument(
@@ -67,56 +68,102 @@ def main(cfg):
             project_name="spectre",
             config={k: v for d in cfg.values() for k, v in d.items()},
             init_kwargs={
-                "name": "mae-pretrain-" + cfg.model.architecture,
+                "name": "siglip-pretrain-" + cfg.model.architecture,
                 "dir": os.path.join(cfg.train.output_dir, "logs"),
             },
         )
-
+    
     # Get dataloader
+    collate_fn = partial(
+        extended_collate_siglip,
+        tokenizer=AutoTokenizer.from_pretrained(
+            cfg.model.text_tokenizer, trust_remote_code=True
+        ),
+    )
     data_loader = get_dataloader(
         cfg.train.datasets,
         cfg.train.data_dir,
-        include_reports=False,
+        include_reports=True,
         include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
-        transform=MAETransform(),
+        transform=SigLIPTransform(),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
         pin_memory=True,
         shuffle=True,
+        collate_fn=collate_fn,
     )
 
     # Initialize backbone
     if (
-        hasattr(models, cfg.model.architecture)
+        hasattr(models, cfg.model.architecture) 
         and cfg.model.architecture.startswith("vit")
     ):
-        backbone = getattr(models, cfg.model.architecture)(
+        image_backbone = getattr(models, cfg.model.architecture)(
             pretrained_weights=cfg.model.pretrained_weights,
             num_classes=0,
         )
+        image_backbone_embed_dim = image_backbone.embed_dim
+    elif (
+        hasattr(models, cfg.model.architecture)
+        and cfg.model.architecture.startswith("resnet")
+        or cfg.model.architecture.startswith("resnext")
+    ):
+        image_backbone = getattr(models, cfg.model.architecture)(
+            pretrained_weights=cfg.model.pretrained_weights,
+            num_classes=0,
+            norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
+        )
+        image_backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
-    # Initialize DINO model
-    model = MAE(
-        backbone,
-        mask_ratio=cfg.model.mask_ratio,
-        decoder_dim=cfg.model.decoder_dim,
-        decoder_depth=cfg.model.decoder_depth,
-        decoder_num_heads=cfg.model.decoder_num_heads,
+    image_feature_comb = models.FeatureVisionTransformer(
+        patch_dim=image_backbone_embed_dim,
+        embed_dim=cfg.model.feature_comb_embed_dim,
+        num_patches=36,
+        depth=cfg.model.feature_comb_num_layers,
+        heads=cfg.model.feature_comb_num_heads,
+    )
+    
+    # text_config = models.Qwen2Config.from_pretrained(cfg.model.text_encoder_config)
+    # text_backbone_embed_dim = text_config.hidden_size
+    # text_backbone = models.Qwen2Model.from_pretrained(
+    #     cfg.model.text_encoder_weights,
+    #     config=text_config
+    # )
+
+    
+
+    text_backbone = AutoModel.from_pretrained(cfg.model.text_encoder_config,
+                                               trust_remote_code=True)
+    text_backbone_embed_dim = text_backbone.config.hidden_size
+
+    # Initialize the SigLIP model
+    model = SigLIP(
+        image_backbone=image_backbone,
+        text_backbone=text_backbone,
+        image_feature_comb=image_feature_comb,
+        image_embed_dim=image_feature_comb.embed_dim,
+        text_embed_dim=text_backbone_embed_dim,
+        projection_dim=cfg.model.projection_dim,
     )
 
-    # Initialize criterion
-    criterion = MSELoss()
+    # Intialize criterion
+    criterion = SigLIPLoss(
+        learnable_t=cfg.model.learnable_t,
+        learnable_b=cfg.model.learnable_b,
+        normalize=cfg.model.normalize,
+        init_t=cfg.model.init_t,
+        init_b=cfg.model.init_b,
+    )
 
     # Initialize optimizer
     optimizer = AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
-        weight_decay=cfg.optim.weight_decay,
     )
 
     # Initialize learning rate scheduler
@@ -130,50 +177,34 @@ def main(cfg):
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion, optimizer, lr_scheduler = accelerator.prepare(
-        model,
-        data_loader,
-        criterion,
-        optimizer,
-        lr_scheduler,
+        model, data_loader, criterion, optimizer, lr_scheduler,
     )
-        
-    # Keep unwrapped model for easier access to individual components
-    unwrapped_model = accelerator.unwrap_model(model)
 
-    # Load checkpoint if specified
-    if cfg.train.resume_ckp:
-        start_epoch = load_state(
-            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
-            model=unwrapped_model,
-            optimizer=optimizer, 
-            lr_scheduler=lr_scheduler,
-            criterion=criterion, 
-        )
-    else:
-        start_epoch: int = 0
-    
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
 
     # Start training
-    global_step: int = start_epoch * len(data_loader)
-    for epoch in range(start_epoch, cfg.optim.epochs):
+    global_step: int = 0
+    for epoch in range(cfg.optim.epochs):
         model.train()
         for batch in data_loader:
-            
+
             with accelerator.accumulate(model):
 
                 # Forward pass
-                outputs, targets = model(batch["image"])
-                loss = criterion(outputs, targets)
+                image_embeddings, text_embeddings = model(
+                    batch['image'], batch['input_ids'], batch['attention_mask']
+                )
+
+                loss = criterion(image_embeddings, text_embeddings)
 
                 # Backward pass
                 accelerator.backward(loss)
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unwrapped_model.parameters(), cfg.optim.clip_grad_norm)
+                    accelerator.clip_grad_norm_(model.parameters(), cfg.optim.clip_grad_norm)
 
                 optimizer.step()
 
@@ -183,7 +214,7 @@ def main(cfg):
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
                         f"Loss: {loss.item():8f}, "
-                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}"
+                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
                     )
                     accelerator.log(
                         {
@@ -202,31 +233,14 @@ def main(cfg):
                 # Update global step
                 global_step += 1
 
-        # Save checkpoint
-        save_state(
-            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
-            epoch=epoch,
-            model=unwrapped_model,
-            optimizer=optimizer,
-            lr_scheduler=lr_scheduler,
-            criterion=criterion,
-            torch_random_state=torch.random.get_rng_state(),
-            numpy_random_state=tuple(np.random.get_state()),
-            random_random_state=random.getstate(),
-        )
-        if (epoch + 1) % cfg.train.saveckp_freq == 0:
-            save_state(
-                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1: 04}.pt"),
-                epoch=epoch,
-                model=unwrapped_model,
-                optimizer=optimizer,
-                lr_scheduler=lr_scheduler,
-                criterion=criterion,
-                torch_random_state=torch.random.get_rng_state(),
-                numpy_random_state=tuple(np.random.get_state()),
-                random_random_state=random.getstate(),
+        if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
+            accelerator.save_model(
+                model,
+                os.path.join(
+                    cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}"
+                ),
             )
-
+    
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
 
@@ -234,5 +248,5 @@ def main(cfg):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, default_config_mae)
+    cfg = setup(args, default_config_siglip)
     main(cfg)

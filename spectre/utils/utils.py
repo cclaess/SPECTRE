@@ -35,5 +35,4 @@ to_1tuple = _ntuple(1)
 to_2tuple = _ntuple(2)
 to_3tuple = _ntuple(3)
 to_4tuple = _ntuple(4)
-
-from lightly.models.utils import deactivate_requires_grad, update_momentum
+to_ntuple = _ntuple

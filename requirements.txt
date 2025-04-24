@@ -1,6 +1,13 @@
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch~=2.6.0
-monai~=1.4.0
-timm~=1.0.14
-accelerate~=1.4.0
-omegaconf~=2.3.0
+torch
+wandb
+numpy
+monai
+timm
+pandas
+openpyxl
+accelerate
+omegaconf
+nibabel
+SimpleITK
+transformers
+tokenizers

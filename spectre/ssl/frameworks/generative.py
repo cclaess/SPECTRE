@@ -19,25 +19,39 @@ from spectre.utils.models import (
 
 
 class MAE(nn.Module):
-    def __init__(self, backbone: VisionTransformer):
+    def __init__(
+            self,
+            backbone: VisionTransformer,
+            mask_ratio: float = 0.75,
+            decoder_dim: int = 512,
+            decoder_depth: int = 8,
+            decoder_num_heads: int = 16,
+            mlp_ratio: float = 4.0,
+            proj_drop_rate: float = 0.0,
+            attn_drop_rate: float = 0.0,
+        ):
         super().__init__()
 
-        decoder_dim = 512
-        self.mask_ratio = 0.75
-        self.patch_size = backbone.patch_embed.patch_size[0]
+        self.mask_ratio = mask_ratio
+        self.patch_size = backbone.patch_embed.patch_size
 
-        self.backbone = MaskedVisionTransformer(vit=backbone)
+        self.backbone = MaskedVisionTransformer(
+            vit=backbone,
+        )
+        self.backbone.mask_token = None  # remove ununsed mask token from encoder
         self.sequence_length = self.backbone.sequence_length
+
         self.decoder = MAEDecoder(
             num_patches=backbone.patch_embed.num_patches,
             patch_size=self.patch_size,
+            in_chans=backbone.patch_embed.proj.in_channels,
             embed_dim=backbone.embed_dim,
             decoder_embed_dim=decoder_dim,
-            decoder_depth=1,
-            decoder_num_heads=16,
-            mlp_ratio=4.0,
-            proj_drop_rate=0.0,
-            attn_drop_rate=0.0,
+            decoder_depth=decoder_depth,
+            decoder_num_heads=decoder_num_heads,
+            mlp_ratio=mlp_ratio,
+            proj_drop_rate=proj_drop_rate,
+            attn_drop_rate=attn_drop_rate,
         )
 
     def forward_encoder(self, images, idx_keep=None):

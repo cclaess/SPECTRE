@@ -8,6 +8,7 @@ from monai.transforms import (
     ScaleIntensityRanged,
     Orientationd,
     Spacingd,
+    SpatialPadd,
     ResizeWithPadOrCropd,
     RandSpatialCropSamples,
     Resize,
@@ -39,9 +40,8 @@ class DINOTransform(Compose):
                 ),
                 Orientationd(keys=("image",), axcodes="RAS"),
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
-                ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
-                # Take equal amount of crops from the same subject as could
-                # be taken without overlap to avoid data-loading overhead
+                ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, -1)),
+                SpatialPadd(keys=("image",), spatial_size=(-1, -1, input_size[2])),
                 DINORandomCropTransformd(
                     keys=("image",),
                     input_size=input_size,
@@ -94,6 +94,8 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
         self.num_base_patches = num_base_patches
         self.num_global_crops = num_global_crops
         self.num_local_crops = num_local_crops
+        self.resize_global = Resize(spatial_size=input_size, mode="trilinear")
+        self.resize_local = Resize(spatial_size=local_crop_size, mode="trilinear")
 
     def randomize(self, data: Any = None) -> None:
         # Set a sub-seed for consistency across the different cropping operations.
@@ -120,7 +122,7 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
         # For each base patch, perform the global and local cropping.
         for patch in base_patches:
             # --- Global crops ---
-            global_roi_size = tuple(int(s * 0.4) for s in self.input_size)
+            global_roi_size = tuple(int(s * 0.54) for s in self.input_size)  # 0.54 = (0.4 ** 2) ** (1/3)
             global_cropper = RandSpatialCropSamples(
                 roi_size=global_roi_size,
                 num_samples=self.num_global_crops,
@@ -133,13 +135,13 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             global_crops = list(global_cropper(patch, lazy=lazy_))
             # Resize each global crop back to the original input size.
             resized_global = [
-                Resize(spatial_size=self.input_size)(gc)
+                self.resize_global(gc)
                 for gc in global_crops
             ]
             
             # --- Local crops ---
-            local_roi_size = tuple(int(s * 0.05) for s in self.input_size)
-            max_local_roi = tuple(int(s * 0.4) for s in self.input_size)
+            local_roi_size = tuple(int(s * 0.14) for s in self.input_size)  # 0.14 = (0.05 ** 2) ** (1/3)
+            max_local_roi = tuple(int(s * 0.54) for s in self.input_size)  # 0.54 = (0.4 ** 2) ** (1/3)
             local_cropper = RandSpatialCropSamples(
                 roi_size=local_roi_size,
                 num_samples=self.num_local_crops,
@@ -152,7 +154,7 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             local_crops = list(local_cropper(patch, lazy=lazy_))
             # Resize each local crop to the desired local crop size.
             resized_local = [
-                Resize(spatial_size=self.local_crop_size)(lc)
+                self.resize_local(lc)
                 for lc in local_crops
             ]
             
@@ -165,3 +167,34 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             output.append(patch_dict)
             
         return output
+
+
+if __name__ == "__main__":
+
+    # Save some example data after transforming it.
+    import os
+    import SimpleITK as sitk
+
+    data = {"image": r"data/test_data/train_1_a_1.nii.gz"}
+    transform = DINOTransform()
+    transformed_data = transform(data)
+
+    # Save the different crops to a folder for visualization.
+    output_dir = r"data/test_data/dino_transform_output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    for i, patch in enumerate(transformed_data):
+
+        # Save the global crops
+        for j, gc in enumerate(patch["global_crops"]):
+            gc_img = sitk.GetImageFromArray(gc.squeeze(0).numpy())
+            gc_img.SetSpacing((1.5, 0.75, 0.75))
+            gc_path = os.path.join(output_dir, f"{i}_global_crop_{j}.nii.gz")
+            sitk.WriteImage(gc_img, gc_path)
+
+        # Save the local crops
+        for j, lc in enumerate(patch["local_crops"]):
+            lc_img = sitk.GetImageFromArray(lc.squeeze(0).numpy())
+            lc_img.SetSpacing((1.5, 0.75, 0.75))
+            lc_path = os.path.join(output_dir, f"{i}_local_crop_{j}.nii.gz")
+            sitk.WriteImage(lc_img, lc_path)

@@ -4,10 +4,65 @@ from typing import Tuple, Union, Callable, Sequence, Literal, Optional, Type, Se
 import torch
 import torch.nn as nn
 from timm.layers import PatchDropout, AttentionPoolLatent
-from timm.models.vision_transformer import Block, Mlp
+from timm.models.vision_transformer import LayerScale, DropPath, Mlp
 
 from spectre.utils.models import resample_abs_pos_embed, feature_take_indices, global_pool_nlc
-from spectre.models.layers import PatchEmbed
+from spectre.models.layers import PatchEmbed, Attention
+
+
+class Block(nn.Module):
+    def __init__(
+            self,
+            dim: int,
+            num_heads: int,
+            attn_mode: str = 'mha',
+            q_proj_dim: Optional[int] = None,
+            kv_proj_dim: Optional[int] = None,
+            mlp_ratio: float = 4.,
+            qkv_bias: bool = False,
+            qk_norm: bool = False,
+            proj_bias: bool = True,
+            proj_drop: float = 0.,
+            attn_drop: float = 0.,
+            init_values: Optional[float] = None,
+            drop_path: float = 0.,
+            act_layer: Type[nn.Module] = nn.GELU,
+            norm_layer: Type[nn.Module] = nn.LayerNorm,
+            mlp_layer: Type[nn.Module] = Mlp,
+    ) -> None:
+        super().__init__()
+        self.norm1 = norm_layer(dim)
+        self.attn = Attention(
+            dim,
+            num_heads=num_heads,
+            mode=attn_mode,
+            q_proj_dim=q_proj_dim,
+            kv_proj_dim=kv_proj_dim,
+            qkv_bias=qkv_bias,
+            qk_norm=qk_norm,
+            proj_bias=proj_bias,
+            attn_drop=attn_drop,
+            proj_drop=proj_drop,
+            norm_layer=norm_layer,
+        )
+        self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+        self.norm2 = norm_layer(dim)
+        self.mlp = mlp_layer(
+            in_features=dim,
+            hidden_features=int(dim * mlp_ratio),
+            act_layer=act_layer,
+            bias=proj_bias,
+            drop=proj_drop,
+        )
+        self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
+        x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
+        return x
 
 
 class VisionTransformer(nn.Module):
@@ -23,6 +78,9 @@ class VisionTransformer(nn.Module):
             embed_dim: int = 768,
             depth: int = 12,
             num_heads: int = 12,
+            attn_mode: str = 'mha',
+            q_proj_dim: Optional[int] = None,
+            kv_proj_dim: Optional[int] = None,
             mlp_ratio: float = 4.,
             qkv_bias: bool = True,
             qk_norm: bool = False,
@@ -60,6 +118,9 @@ class VisionTransformer(nn.Module):
             embed_dim: Transformer embedding dimension.
             depth: Depth of transformer.
             num_heads: Number of attention heads.
+            attn_mode: Attention mode ('mha', 'mqa', 'mla').
+            q_proj_dim: Query projection dimension for 'mla' mode.
+            kv_proj_dim: Key, value projection dimension for 'mla' mode.
             mlp_ratio: Ratio of mlp hidden dim to embedding dim.
             qkv_bias: Enable bias for qkv projections if True.
             init_values: Layer-scale init values (layer-scale enabled if not None).
@@ -140,6 +201,9 @@ class VisionTransformer(nn.Module):
             block_fn(
                 dim=embed_dim,
                 num_heads=num_heads,
+                attn_mode=attn_mode,
+                q_proj_dim=q_proj_dim,
+                kv_proj_dim=kv_proj_dim,
                 mlp_ratio=mlp_ratio,
                 qkv_bias=qkv_bias,
                 qk_norm=qk_norm,
@@ -172,7 +236,7 @@ class VisionTransformer(nn.Module):
         self.head_drop = nn.Dropout(drop_rate)
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-        # self.init_weights()
+        self.init_weights()
 
     def init_weights(self) -> None:
         if self.pos_embed is not None:
@@ -189,8 +253,6 @@ class VisionTransformer(nn.Module):
             nn.init.trunc_normal_(m.weight, std=.02)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
-        elif hasattr(m, 'init_weights'):
-            m.init_weights()
 
     @torch.jit.ignore
     def no_weight_decay(self) -> Set:
@@ -413,108 +475,30 @@ class VisionTransformer(nn.Module):
         x = self.forward_features(x)
         x = self.forward_head(x, pre_logits=pre_logits)
         return x
-
-
-class FeatureVisionTransformer(nn.Module):
-    def __init__(
-        self,
-        patch_dim: int = 768,
-        embed_dim: int = 768,
-        num_patches: int = 36,
-        depth: int = 4,
-        heads: int = 12,
-        mlp_dim: int = 3072,
-        dropout: float = 0.1,
-        causal: bool = True
-    ):
-        """
-        A Vision Transformer that accepts already flattened embedding tokens from a previous layer as input (call them patches for consistency).
-
-        Args:
-            patch_dim (int): Dimension of each flattened patch 
-            embed_dim (int): Dimension of the patch embeddings.
-            num_patches (int): Number of patches in the input.
-            depth (int): Number of transformer encoder layers.
-            heads (int): Number of attention heads.
-            mlp_dim (int): Dimension of the feed-forward (MLP) layer in each transformer block.
-            dropout (float): Dropout rate.
-            causal (bool): If True, the transformer applies a causal mask.
-        """
-        super().__init__()
-        # Linear projection of flattened patches to embedding dimension.
-        self.patch_embedding = nn.Linear(patch_dim, embed_dim)
-        
-        # Learnable classification token.
-        self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
-        
-        # Learnable positional embeddings for each patch + the cls token.
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, embed_dim))
-        
-        self.dropout = nn.Dropout(dropout)
-        
-        # Transformer encoder layer.
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim,
-            nhead=heads,
-            dim_feedforward=mlp_dim,
-            dropout=dropout,
-            activation='gelu'
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=depth)
-        
-        # Final layer normalization.
-        self.norm = nn.LayerNorm(embed_dim)
-
-        self.causal = causal
-
-    def forward(self, patches: torch.Tensor, return_cls_token = True) -> torch.Tensor:
-        """
-        Forward pass for the Vision Transformer.
-
-        Args:
-            patches (torch.Tensor): Input tensor of shape (batch, num_patches, patch_dim)
-                containing flattened patches.
-        
-        Returns:
-            torch.Tensor: Output tensor of shape (batch, num_patches + 1, embed_dim)
-                after processing through the transformer.
-        """
-        b, n, _ = patches.shape
-        
-        # Project flattened patches to embedding dimension.
-        x = self.patch_embedding(patches)  # Shape: (b, n, embed_dim)
-        
-        # Prepend the class token to each sequence.
-        cls_tokens = self.cls_token.expand(b, -1, -1)  # Shape: (b, 1, embed_dim)
-        x = torch.cat((cls_tokens, x), dim=1)  # Shape: (b, n+1, embed_dim)
-        
-        # Add positional embeddings.
-        x = x + self.pos_embedding[:, : x.size(1)]
-        x = self.dropout(x)
-        
-        # Transformer expects input as (sequence_length, batch, embed_dim)
-        x = x.transpose(0, 1)
-        # If causal mode is enabled, create a causal mask.
-        if self.causal:
-            seq_len = x.size(0)
-            # Create an upper-triangular matrix, where True indicates masked positions.
-            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
-            x = self.transformer(x, mask=causal_mask)
-        else:
-            x = self.transformer(x)
-        x = x.transpose(0, 1)
-        
-        # Apply final layer normalization.
-        x = self.norm(x)
-
-        if return_cls_token:
-            return x[:, 0]
-        return x
-
     
+    @classmethod
+    def from_pretrained(
+            cls,
+            checkpoint_path: str,
+            verbose: bool = True,
+            **kwargs
+    ) -> 'VisionTransformer':
+        """Load pretrained model weights."""
+        model = cls(**kwargs)
+        state_dict = torch.load(checkpoint_path, map_location='cpu')
+        msg = model.load_state_dict(state_dict, strict=False)
+        if verbose:
+            print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
+        return model
 
-def vit_tiny_patch16_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+
+def vit_tiny_patch16_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Tiny model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(16, 16, 8),
         embed_dim=192,
@@ -523,12 +507,20 @@ def vit_tiny_patch16_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
 
-def vit_small_patch16_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+
+def vit_small_patch16_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Small model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(16, 16, 8),
         embed_dim=384,
@@ -537,12 +529,20 @@ def vit_small_patch16_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
 
-def vit_base_patch16_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+
+def vit_base_patch16_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Base model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(16, 16, 8),
         embed_dim=768,
@@ -551,12 +551,20 @@ def vit_base_patch16_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
+    
 
-def vit_base_patch32_128(*args, **kwargs) -> VisionTransformer:
-    return VisionTransformer(
+def vit_base_patch32_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Base model with 3D patch embedding, patch size [32, 32, 16] and input size [128, 128, 64].
+    """
+    kwargs = dict(
         img_size=(128, 128, 64),
         patch_size=(32, 32, 16),
         embed_dim=768,
@@ -565,6 +573,8 @@ def vit_base_patch32_128(*args, **kwargs) -> VisionTransformer:
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,
-        *args,
-        **kwargs
+        **kwargs,
     )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
