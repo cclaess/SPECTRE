@@ -94,6 +94,8 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
         self.num_base_patches = num_base_patches
         self.num_global_crops = num_global_crops
         self.num_local_crops = num_local_crops
+        self.resize_global = Resize(spatial_size=input_size, mode="trilinear")
+        self.resize_local = Resize(spatial_size=local_crop_size, mode="trilinear")
 
     def randomize(self, data: Any = None) -> None:
         # Set a sub-seed for consistency across the different cropping operations.
@@ -133,7 +135,7 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             global_crops = list(global_cropper(patch, lazy=lazy_))
             # Resize each global crop back to the original input size.
             resized_global = [
-                Resize(spatial_size=self.input_size)(gc)
+                self.resize_global(gc)
                 for gc in global_crops
             ]
             
@@ -152,7 +154,7 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             local_crops = list(local_cropper(patch, lazy=lazy_))
             # Resize each local crop to the desired local crop size.
             resized_local = [
-                Resize(spatial_size=self.local_crop_size)(lc)
+                self.resize_local(lc)
                 for lc in local_crops
             ]
             
