@@ -22,6 +22,7 @@ train:
   log_freq: 1
 optim:
   epochs: 100
+  total_steps: 10
   weight_decay: 0.04
   weight_decay_end: 0.4
   base_lr: 0.004

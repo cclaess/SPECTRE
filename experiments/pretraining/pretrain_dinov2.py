@@ -189,11 +189,13 @@ def main(cfg):
     total_num_steps = cfg.optim.epochs * len(data_loader)
     warmup_num_steps = cfg.optim.warmup_epochs * len(data_loader)
 
+    
+
     # Start training
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
         model.train()
-        for batch in data_loader:
+        for idx, batch in enumerate(data_loader):
 
             with accelerator.accumulate(model):
 
@@ -323,6 +325,10 @@ def main(cfg):
                 # Update global step
                 global_step += 1
 
+                if global_step >= cfg.optim.total_steps:
+                    accelerator.print("Reached max number of training steps - inner loop.")
+                    break
+
         # Save checkpoint
         if accelerator.is_main_process:
             save_state(
@@ -353,6 +359,10 @@ def main(cfg):
                     random_random_state=random.getstate(),
                 )
         accelerator.wait_for_everyone()
+
+        if global_step >= cfg.optim.total_steps:
+            accelerator.print("Reached max number of training steps - outer loop.")
+            break
     
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
