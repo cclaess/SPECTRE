@@ -232,8 +232,8 @@ def main(cfg):
                 optimizer.param_groups[0]["weight_decay"] = weight_decay
 
                 # Batch to 32-bit float
-                batch = {k: v.to(torch.float32) if hasattr(v, 'dtype') and v.dtype == torch.float16 else v \
-                         for k, v in batch.items()}
+                # batch = {k: v.to(torch.float32) if hasattr(v, 'dtype') and v.dtype == torch.float16 else v \
+                #          for k, v in batch.items()}
 
                 # Forward pass
                 teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
