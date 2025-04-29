@@ -90,6 +90,8 @@ def main(cfg):
         embed_dim = backbone.embed_dim
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
+    
+    accelerator.print(f"Info: {cfg.model.architecture} backbone initialized.")
 
     # Get dataloader
     collate_fn = partial(
@@ -117,6 +119,8 @@ def main(cfg):
         collate_fn=collate_fn,
     )
 
+    accelerator.print(f"Info: Dataloader initialized with {len(data_loader)} batches.")
+
     # Initialize DINO model
     model = DINOv2(
         backbone,
@@ -125,6 +129,8 @@ def main(cfg):
         bottleneck_dim=cfg.model.bottleneck_dim,
         output_dim=cfg.model.output_dim,
     )
+
+    accelerator.print(f"Info: DINOv2 model initialized.")
 
     # Initialize criterion
     criterion_dino = DINOLoss(
@@ -145,6 +151,8 @@ def main(cfg):
         center_momentum=cfg.model.center_momentum,
     )
 
+    accelerator.print(f"Info: Loss functions initialized.")
+
     # Initialize optimizer
     optimizer = AdamW(
         model.parameters(),
@@ -152,14 +160,7 @@ def main(cfg):
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
 
-    # Initialize learning rate scheduler
-    # lr_scheduler = CosineWarmupScheduler(
-    #     optimizer,
-    #     warmup_epochs=cfg.optim.warmup_epochs * len(data_loader),
-    #     max_epochs=cfg.optim.epochs * len(data_loader),
-    #     start_value=cfg.optim.lr,
-    #     end_value=cfg.optim.min_lr,
-    # )
+    accelerator.print(f"Info: AdamW optimizer initialized.")
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
@@ -195,7 +196,7 @@ def main(cfg):
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
         model.train()
-        for idx, batch in enumerate(data_loader):
+        for batch in data_loader:
 
             with accelerator.accumulate(model):
 
@@ -319,9 +320,6 @@ def main(cfg):
                 # Zero gradients
                 optimizer.zero_grad()
 
-                # Update learning rate
-                # lr_scheduler.step()
-
                 # Update global step
                 global_step += 1
 
@@ -336,7 +334,6 @@ def main(cfg):
                 epoch=epoch,
                 model=unwrapped_model,
                 optimizer=optimizer,
-                # lr_scheduler=lr_scheduler,
                 criterion_dino=criterion_dino,
                 criterion_koleo=criterion_koleo,
                 criterion_ibot=criterion_ibot,
@@ -350,7 +347,6 @@ def main(cfg):
                     epoch=epoch,
                     model=unwrapped_model,
                     optimizer=optimizer,
-                    # lr_scheduler=lr_scheduler,
                     criterion_dino=criterion_dino,
                     criterion_koleo=criterion_koleo,
                     criterion_ibot=criterion_ibot,
