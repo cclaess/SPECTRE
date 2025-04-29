@@ -114,9 +114,11 @@ def main(cfg):
         transform=DINOTransform(),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
-        pin_memory=True,
+        pin_memory=cfg.train.pin_memory,
         shuffle=True,
         collate_fn=collate_fn,
+        drop_last=cfg.train.drop_last,
+        persistent_workers=cfg.train.persistent_workers,
     )
 
     accelerator.print(f"Info: Dataloader initialized with {len(data_loader)} batches.")
