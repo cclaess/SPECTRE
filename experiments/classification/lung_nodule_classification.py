@@ -13,6 +13,7 @@ from accelerate import Accelerator, DataLoaderConfiguration
 from torch.optim import AdamW
 from torch.utils.data import Dataset, Subset
 from monai.data import MetaTensor, DataLoader
+from monai.metrics import compute_roc_auc
 from monai.transforms import (
     Compose,
     EnsureChannelFirst,
@@ -229,20 +230,33 @@ def main(cfg):
 
         # Evaluate model
         model.eval()
+        predictions = torch.tensor([])
+        labels = torch.tensor([])
         val_loss = torch.tensor([0.], device=accelerator.device)
         val_steps = 0.
         with torch.no_grad():
             for batch in val_dataloader:
                 output = model(batch["image"])
-                loss = criterion(output, batch["label"])
-                val_loss += loss
-                val_steps += 1
 
-            val_loss /= val_steps
-            val_loss = accelerator.reduce(val_loss, reduction="mean")
+                # Keep all outputs for later analysis
+                predictions = torch.cat((predictions, output.detach().cpu()), dim=0)
+                labels = torch.cat((labels, batch["label"].cpu()), dim=0)
+
+            # Get predictions and labels form all devices
+            predictions = accelerator.gather(predictions)
+            labels = accelerator.gather(labels)
+            
+            val_loss = criterion(predictions, labels)
             val_loss = val_loss.item()
+
+            val_auc = compute_roc_auc(predictions, labels)[0]
+            
             accelerator.print(f"Validation loss: {val_loss}")
-            accelerator.log({"val_loss": val_loss}, step=global_step - 1)
+            accelerator.print(f"Validation AUC: {val_auc}")
+            accelerator.log({
+                "val_loss": val_loss,
+                "val_auc": val_auc,
+            }, step=global_step - 1)
 
         if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
             accelerator.save_model(
