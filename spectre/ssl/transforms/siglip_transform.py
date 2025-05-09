@@ -86,41 +86,49 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
         if isinstance(icd10_codes, str):
             icd10_codes = icd10_codes.split(",")
         
-        # Ensure that we have at least three findings and impressions.
-        if len(findings) < 3:
-            raise ValueError("Expected at least 3 findings")
-        if len(impressions) < 3:
-            raise ValueError("Expected at least 3 impressions")
         
-        # Define weights for selecting the first 3 items.
-        weights = [
-            self.likelyhood_original,
-            (1 - self.likelyhood_original) / 2,
-            (1 - self.likelyhood_original) / 2,
-        ]
+        report = ""
         
         # Randomly select a finding and impression using weighted probabilities.
-        selected_finding = self.R.choice(findings[:3], p=weights)
-        selected_impression = self.R.choice(impressions[:3], p=weights)
+        if len(findings) > 0:
+            num_elements = len(findings)
+            weights = [self.likelyhood_original] + [(1 - self.likelyhood_original) / (num_elements - 1)] * (num_elements - 1)
+            selected_finding = self.R.choice(findings, p=weights)
         
-        # Draw a value between icd10_range_lower and 1.0 to determine the percentage of ICD10 codes to include.
-        icd10_percentage = self.R.uniform(self.icd10_range_lower, 1.0)
-        num_codes = int(len(icd10_codes) * icd10_percentage)
+            # Add finding to the report.
+            report += f"Findings: {selected_finding}\n"
+
+        if len(impressions) > 0:
+            num_elements = len(impressions)
+            weights = [self.likelyhood_original] + [(1 - self.likelyhood_original) / (num_elements - 1)] * (num_elements - 1)
+            # Select an impression based on the weights.
+            selected_impression = self.R.choice(impressions, p=weights)
+
+            # Add impression to the report.
+            report += f"Impressions: {selected_impression}\n"
+
+        # check if icd10_codes is empty or not
+        if icd10_codes:
+                
+            # Draw a value between icd10_range_lower and 1.0 to determine the percentage of ICD10 codes to include.
+            icd10_percentage = self.R.uniform(self.icd10_range_lower, 1.0)
+            num_codes = int(len(icd10_codes) * icd10_percentage)
         
-        if num_codes > 0:
-            # Ensure we do not exceed the available number of codes.
-            num_codes = min(num_codes, len(icd10_codes))
-            # Sample a subset of ICD10 codes without replacement.
-            selected_icd10 = self.R.choice(icd10_codes, size=num_codes, replace=False).tolist()
-        else:
-            selected_icd10 = []
+            if num_codes > 0:
+                # Ensure we do not exceed the available number of codes.
+                num_codes = min(num_codes, len(icd10_codes))
+                # Sample a subset of ICD10 codes without replacement.
+                selected_icd10 = self.R.choice(icd10_codes, size=num_codes, replace=False).tolist()
+            
+            # Add ICD10 codes to the report.
+            report += f"ICD10: {', '.join(selected_icd10)}\n"
         
         # Construct the final report string.
-        report = (
-            f"Findings: {selected_finding}\n"
-            f"Impressions: {selected_impression}\n"
-            f"ICD10: {', '.join(selected_icd10) if selected_icd10 else ''}"
-        )
+        # report = (
+        #     f"Findings: {selected_finding}\n"
+        #     f"Impressions: {selected_impression}\n"
+        #     f"ICD10: {', '.join(selected_icd10) if selected_icd10 else ''}"
+        # )
         
         data["report"] = report
         return data

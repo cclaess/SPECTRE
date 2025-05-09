@@ -20,18 +20,26 @@ class CTRateDataset(Dataset):
             import pandas as pd
             text_path = os.path.join(Path(data_dir), 'dataset', "radiology_text_reports", f"{subset}_reports.xlsx" )
             reports = pd.read_excel(text_path)
+            if subset == "train":
+                data = [{
+                    "image": str(image_path),
+                    "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
 
-            data = [{
-                "image": str(image_path),
-                "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
+                    "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
 
-                "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
+                } for image_path in image_paths]
+            else:
+                data = [{
+                    "image": str(image_path),
+                    "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0]],
 
-            } for image_path in image_paths]
+                    "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0]],
+
+                } for image_path in image_paths]
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]
 
@@ -52,18 +60,26 @@ class CTRateCacheDataset(CacheDataset):
             import pandas as pd
             text_path = os.path.join(Path(data_dir), 'dataset', "radiology_text_reports", f"{subset}_reports.xlsx" )
             reports = pd.read_excel(text_path)
+            if subset == "train":
+                data = [{
+                    "image": str(image_path),
+                    "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
 
-            data = [{
-                "image": str(image_path),
-                "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
+                    "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
+                    reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
 
-                "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
-                reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
+                } for image_path in image_paths]
+            else:
+                data = [{
+                    "image": str(image_path),
+                    "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0]],
 
-            } for image_path in image_paths]
+                    "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0]],
+
+                } for image_path in image_paths]
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]
 
