@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import torch
 from monai.transforms import (
     Compose,
     LoadImaged,
@@ -8,6 +9,7 @@ from monai.transforms import (
     Orientationd,
     Spacingd,
     ResizeWithPadOrCropd,
+    CastToTyped,
     MapTransform,
     RandomizableTransform,
 )
@@ -20,7 +22,9 @@ class SigLIPTransform(Compose):
     def __init__(
         self, 
         input_size: Tuple[int, int, int] = (128, 128, 64),
+        dtype: str = "float32",
     ):
+        assert dtype in ["float16", "float32"], "dtype must be either 'float16' or 'float32'"
         super().__init__(
             [
                 LoadImaged(keys=("image",)),
@@ -36,6 +40,7 @@ class SigLIPTransform(Compose):
                 Orientationd(keys=("image",), axcodes="RAS"),
                 Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
                 ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
+                CastToTyped(keys=("image",), dtype=getattr(torch, dtype)),
                 
                 # Crop the volume into equal non-overlapping samples
                 SWSpatialCropSamplesd(
