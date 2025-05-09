@@ -353,7 +353,7 @@ class LUNA25PatchTransform(Compose):
             EnsureChannelFirst(channel_dim="no_channel"),
             ScaleIntensityRange(a_min=-1000, a_max=1000, b_min=0.0, b_max=1.0, clip=True),
             Spacing(pixdim=(0.75, 0.75, 1.5), mode="trilinear", lazy=True),
-            # RandRotate(range_x=math.pi, range_y=math.pi, range_z=math.pi, prob=0.5, lazy=True),
+            RandRotate(range_x=math.pi / 6, range_y=math.pi / 6, range_z=math.pi / 6, prob=0.5, lazy=True),
             # RandAxisFlip(prob=0.5, lazy=True),
             ResizeWithPadOrCrop((128, 128, 64)),
         ])
