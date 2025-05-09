@@ -299,7 +299,7 @@ def main(cfg):
                     numpy_random_state=tuple(np.random.get_state()),
                     random_random_state=random.getstate(),
                 )
-    accelerator.wait_for_everyone()
+        accelerator.wait_for_everyone()
 
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
