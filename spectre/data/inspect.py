@@ -26,9 +26,9 @@ class InspectDataset(Dataset):
 
             data = [{
                 "image": str(image_path),
-                "impressions": [reports[reports["impression_id"] == image_path.name]["Impressions_EN"].values[0],
-                reports[reports["impression_id"] == image_path.name]["Impressions_1"].values[0],
-                reports[reports["impression_id"] == image_path.name]["Impressions_2"].values[0]],
+                "impressions": [reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]],
 
             } for image_path in image_paths]
         else:
@@ -53,9 +53,9 @@ class InspectCacheDataset(CacheDataset):
 
             data = [{
                 "image": str(image_path),
-                "impressions": [reports[reports["impression_id"] == image_path.name]["Impressions_EN"].values[0],
-                reports[reports["impression_id"] == image_path.name]["Impressions_1"].values[0],
-                reports[reports["impression_id"] == image_path.name]["Impressions_2"].values[0]],
+                "impressions": [reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]],
 
             } for image_path in image_paths]
         else:

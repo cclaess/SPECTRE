@@ -129,6 +129,8 @@ def main(cfg):
         image_backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
+    
+    accelerator.print(f"Info: {cfg.model.architecture} backbone initialized.")
 
     image_feature_comb = models.FeatureVisionTransformer(
         patch_dim=image_backbone_embed_dim,
@@ -137,10 +139,14 @@ def main(cfg):
         depth=cfg.model.feature_comb_num_layers,
         heads=cfg.model.feature_comb_num_heads,
     )
+
+    accelerator.print(f"Info: feature combination model initialized.")
     
     # Initialize text backbone
     text_backbone = AutoModel.from_pretrained(cfg.model.text_encoder, trust_remote_code=True)
     text_backbone_embed_dim = text_backbone.config.hidden_size
+
+    accelerator.print(f"Info: {cfg.model.text_encoder} backbone initialized.")
 
     # Initialize the SigLIP model
     model = SigLIP(
@@ -152,6 +158,8 @@ def main(cfg):
         projection_dim=cfg.model.projection_dim,
     )
 
+    accelerator.print(f"Info: SigLIP model initialized.")
+
     # Intialize criterion
     criterion = SigLIPLoss(
         learnable_t=cfg.model.learnable_t,
@@ -161,12 +169,16 @@ def main(cfg):
         init_b=cfg.model.init_b,
     )
 
+    accelerator.print(f"Info: SigLIP loss initialized.")
+
     # Initialize optimizer
     optimizer = AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
+
+    accelerator.print(f"Info: AdamW optimizer initialized.")
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion, optimizer = accelerator.prepare(

@@ -1,6 +1,7 @@
 import os
 
 import torch.distributed as dist
+from accelerate import Accelerator, DataLoaderConfiguration
 
 
 def is_enabled() -> bool:
@@ -49,3 +50,31 @@ def get_local_rank() -> int:
     if not is_enabled():
         return 0
     return int(os.environ.get("LOCAL_RANK", 0))
+
+
+def init_distributed(cfg):
+    """
+    Initialize distributed training.
+    """
+
+    # Initialize accelerator
+    dataloader_config = DataLoaderConfiguration(
+        non_blocking=cfg.train.pin_memory,
+    )
+    accelerator = Accelerator(
+        gradient_accumulation_steps=cfg.train.grad_accum_steps,
+        log_with="wandb" if cfg.train.log_wandb else None,
+        dataloader_config=dataloader_config,
+    )
+
+    # Initialize wandb
+    if cfg.train.log_wandb:
+        accelerator.init_trackers(
+            project_name="spectre",
+            config={k: v for d in cfg.values() for k, v in d.items()},
+            init_kwargs={
+                "dir": os.path.join(cfg.train.output_dir, "logs"),
+            },
+        )
+    
+    return accelerator

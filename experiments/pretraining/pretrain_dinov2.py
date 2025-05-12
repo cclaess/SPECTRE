@@ -7,7 +7,7 @@ from functools import partial
 import numpy as np
 import torch
 from torch.optim import AdamW
-from accelerate import Accelerator, DataLoaderConfiguration
+from accelerate import Accelerator
 
 import spectre.models as models
 from spectre.ssl.frameworks import DINOv2
@@ -50,36 +50,16 @@ def get_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(cfg):
+def main(cfg, accelerator: Accelerator):
     """
     Main function to run pretraining.
 
     Args:
         cfg: Configuration object containing all hyperparameters and settings.
+        accelerator: Accelerator object for distributed training.
     """
-    # Initialize accelerator
-    dataloader_config = DataLoaderConfiguration(
-        non_blocking=cfg.train.pin_memory,
-    )
-    accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
-        log_with="wandb" if cfg.train.log_wandb else None,
-        dataloader_config=dataloader_config,
-    )
-
     # Print config
     accelerator.print(cfg)
-
-    # Initialize wandb
-    if cfg.train.log_wandb:
-        accelerator.init_trackers(
-            project_name="spectre",
-            config={k: v for d in cfg.values() for k, v in d.items()},
-            init_kwargs={
-                "name": "dinov2-pretrain-" + cfg.model.architecture,
-                "dir": os.path.join(cfg.train.output_dir, "logs"),
-            },
-        )
 
     # Initialize backbone
     if (
@@ -94,8 +74,6 @@ def main(cfg):
         embed_dim = backbone.embed_dim
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
-    
-    accelerator.print(f"Info: {cfg.model.architecture} backbone initialized.")
 
     # Get dataloader
     collate_fn = partial(
@@ -127,8 +105,6 @@ def main(cfg):
         persistent_workers=cfg.train.persistent_workers,
     )
 
-    accelerator.print(f"Info: Dataloader initialized with {len(data_loader)} batches.")
-
     # Initialize DINO model
     model = DINOv2(
         backbone,
@@ -137,8 +113,6 @@ def main(cfg):
         bottleneck_dim=cfg.model.bottleneck_dim,
         output_dim=cfg.model.output_dim,
     )
-
-    accelerator.print(f"Info: DINOv2 model initialized.")
 
     # Initialize criterion
     criterion_dino = DINOLoss(
@@ -159,16 +133,12 @@ def main(cfg):
         center_momentum=cfg.model.center_momentum,
     )
 
-    accelerator.print(f"Info: Loss functions initialized.")
-
     # Initialize optimizer
     optimizer = AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
-
-    accelerator.print(f"Info: AdamW optimizer initialized.")
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
@@ -363,5 +333,5 @@ def main(cfg):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, default_config_dinov2)
-    main(cfg)
+    cfg, accelerator = setup(args, default_config_dinov2)
+    main(cfg, accelerator)

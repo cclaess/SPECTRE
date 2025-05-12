@@ -14,7 +14,7 @@ from spectre.ssl.transforms import MAETransform
 from spectre.configs import default_config_mae
 from spectre.utils.config import setup
 from spectre.utils.dataloader import get_dataloader
-from spectre.utils.scheduler import CosineWarmupScheduler
+from spectre.utils.scheduler import cosine_warmup_schedule
 from spectre.utils.checkpointing import load_state, save_state
 
 
@@ -45,32 +45,16 @@ def get_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(cfg):
+def main(cfg, accelerator: Accelerator):
     """
     Main function to run pretraining.
 
     Args:
         cfg: Configuration object containing all hyperparameters and settings.
+        accelerator: Accelerator object for distributed training.
     """
     # Initialize accelerator
-    accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
-        log_with="wandb" if cfg.train.log_wandb else None,
-    )
-
-    # Print config
     accelerator.print(cfg)
-
-    # Initialize wandb
-    if cfg.train.log_wandb:
-        accelerator.init_trackers(
-            project_name="spectre",
-            config={k: v for d in cfg.values() for k, v in d.items()},
-            init_kwargs={
-                "name": "mae-pretrain-" + cfg.model.architecture,
-                "dir": os.path.join(cfg.train.output_dir, "logs"),
-            },
-        )
 
     # Get dataloader
     data_loader = get_dataloader(
@@ -80,11 +64,15 @@ def main(cfg):
         include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
-        transform=MAETransform(),
+        transform=MAETransform(
+            dtype="float16" if cfg.train_load_fp16 else "float32",
+        ),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
-        pin_memory=True,
+        pin_memory=cfg.train.pin_memory,
         shuffle=True,
+        drop_last=cfg.train.drop_last,
+        persistent_workers=cfg.train.persistent_workers,
     )
 
     # Initialize backbone
@@ -119,22 +107,9 @@ def main(cfg):
         weight_decay=cfg.optim.weight_decay,
     )
 
-    # Initialize learning rate scheduler
-    lr_scheduler = CosineWarmupScheduler(
-        optimizer,
-        warmup_epochs=cfg.optim.warmup_epochs * len(data_loader),
-        max_epochs=cfg.optim.epochs * len(data_loader),
-        start_value=cfg.optim.lr,
-        end_value=cfg.optim.min_lr,
-    )
-
     # Prepare model, data, and optimizer for training
-    model, data_loader, criterion, optimizer, lr_scheduler = accelerator.prepare(
-        model,
-        data_loader,
-        criterion,
-        optimizer,
-        lr_scheduler,
+    model, data_loader, criterion, optimizer = accelerator.prepare(
+        model, data_loader, criterion, optimizer,
     )
         
     # Keep unwrapped model for easier access to individual components
@@ -146,7 +121,6 @@ def main(cfg):
             os.path.join(cfg.train.output_dir, "checkpoint.pt"),
             model=unwrapped_model,
             optimizer=optimizer, 
-            lr_scheduler=lr_scheduler,
             criterion=criterion, 
         )
     else:
@@ -155,6 +129,7 @@ def main(cfg):
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
+    warmup_num_steps = cfg.optim.warmup_epochs * len(data_loader)
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
@@ -163,6 +138,18 @@ def main(cfg):
         for batch in data_loader:
             
             with accelerator.accumulate(model):
+
+                # Update learning rate
+                lr = cosine_warmup_schedule(
+                    global_step,
+                    max_steps=total_num_steps,
+                    start_value=cfg.optim.lr,
+                    end_value=cfg.optim.min_lr,
+                    warmup_steps=warmup_num_steps,
+                    warmup_start_value=0.0,
+                )
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
 
                 # Forward pass
                 outputs, targets = model(batch["image"])
@@ -183,12 +170,12 @@ def main(cfg):
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
                         f"Loss: {loss.item():8f}, "
-                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}"
+                        f"LR: {lr:.8f}"
                     )
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            "lr": lr_scheduler.get_last_lr()[0],
+                            "lr": lr,
                         },
                         step=global_step,
                     )
@@ -196,36 +183,33 @@ def main(cfg):
                 # Zero gradients
                 optimizer.zero_grad()
 
-                # Update learning rate
-                lr_scheduler.step()
-
                 # Update global step
                 global_step += 1
 
         # Save checkpoint
-        save_state(
-            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
-            epoch=epoch,
-            model=unwrapped_model,
-            optimizer=optimizer,
-            lr_scheduler=lr_scheduler,
-            criterion=criterion,
-            torch_random_state=torch.random.get_rng_state(),
-            numpy_random_state=tuple(np.random.get_state()),
-            random_random_state=random.getstate(),
-        )
-        if (epoch + 1) % cfg.train.saveckp_freq == 0:
+        if accelerator.is_main_process:
             save_state(
-                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1: 04}.pt"),
+                os.path.join(cfg.train.output_dir, "checkpoint.pt"),
                 epoch=epoch,
                 model=unwrapped_model,
                 optimizer=optimizer,
-                lr_scheduler=lr_scheduler,
                 criterion=criterion,
                 torch_random_state=torch.random.get_rng_state(),
                 numpy_random_state=tuple(np.random.get_state()),
                 random_random_state=random.getstate(),
             )
+            if (epoch + 1) % cfg.train.saveckp_freq == 0:
+                save_state(
+                    os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
+                    epoch=epoch,
+                    model=unwrapped_model,
+                    optimizer=optimizer,
+                    criterion=criterion,
+                    torch_random_state=torch.random.get_rng_state(),
+                    numpy_random_state=tuple(np.random.get_state()),
+                    random_random_state=random.getstate(),
+                )
+        accelerator.wait_for_everyone()
 
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
@@ -234,5 +218,5 @@ def main(cfg):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, default_config_mae)
-    main(cfg)
+    cfg, accelerator = setup(args, default_config_mae)
+    main(cfg, accelerator)

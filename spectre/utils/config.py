@@ -67,6 +67,7 @@ def setup(args, default_config):
     cfg = get_cfg_from_args(args, default_config)
     os.makedirs(args.output_dir, exist_ok=True)
     random_seed(args)
+    accelerator = distributed.init_distributed(cfg)
     apply_scaling_rules_to_cfg(cfg)
     write_config(cfg, args.output_dir)
-    return cfg
+    return cfg, accelerator

@@ -8,7 +8,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 from torch.optim import AdamW
-from accelerate import Accelerator, DataLoaderConfiguration
+from accelerate import Accelerator
 
 import spectre.models as models
 from spectre.ssl.frameworks import DINO
@@ -50,36 +50,16 @@ def get_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(cfg):
+def main(cfg, accelerator: Accelerator):
     """
     Main function to run pretraining.
 
     Args:
         cfg: Configuration object containing all hyperparameters and settings.
+        accelerator: Accelerator object for distributed training.
     """
-    # Initialize accelerator
-    dataloader_config = DataLoaderConfiguration(
-        non_blocking=cfg.train.pin_memory,
-    )
-    accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
-        log_with="wandb" if cfg.train.log_wandb else None,
-        dataloader_config=dataloader_config,
-    )
-
     # Print config
     accelerator.print(cfg)
-
-    # Initialize wandb
-    if cfg.train.log_wandb:
-        accelerator.init_trackers(
-            project_name="spectre",
-            config={k: v for d in cfg.values() for k, v in d.items()},
-            init_kwargs={
-                "name": "dino-pretrain-" + cfg.model.architecture,
-                "dir": os.path.join(cfg.train.output_dir, "logs"),
-            },
-        )
 
     # Get dataloader
     data_loader = get_dataloader(
@@ -154,10 +134,7 @@ def main(cfg):
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion, optimizer = accelerator.prepare(
-        model,
-        data_loader,
-        criterion,
-        optimizer,
+        model, data_loader, criterion, optimizer,
     )
     
     # Keep unwrapped model for easier access to individual components
@@ -308,6 +285,5 @@ def main(cfg):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, default_config_dino)
-
-    main(cfg)
+    cfg, accelerator = setup(args, default_config_dino)
+    main(cfg, accelerator)
