@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 from torch.optim import AdamW
-from accelerate import Accelerator, DataLoaderConfiguration
+from accelerate import Accelerator
 from transformers import AutoModel, AutoTokenizer
 
 import spectre.models as models
@@ -49,36 +49,16 @@ def get_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(cfg):
+def main(cfg, accelerator: Accelerator):
     """
     Main function to run pretraining.
 
     Args:
         cfg: Configuration object containing all hyperparameters and settings.
+        accelerator: Accelerator object for distributed training.
     """
-    # Initialize accelerator
-    dataloader_config = DataLoaderConfiguration(
-        non_blocking=-cfg.train.pin_memory,
-    )
-    accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
-        log_with="wandb" if cfg.train.log_wandb else None,
-        dataloader_config=dataloader_config,
-    )
-
     # Print config
     accelerator.print(cfg)
-
-    # Initialize wandb
-    if cfg.train.log_wandb:
-        accelerator.init_trackers(
-            project_name="spectre",
-            config={k: v for d in cfg.values() for k, v in d.items()},
-            init_kwargs={
-                "name": "siglip-pretrain-" + cfg.model.architecture,
-                "dir": os.path.join(cfg.train.output_dir, "logs"),
-            },
-        )
     
     # Get dataloader
     collate_fn = partial(
@@ -129,8 +109,6 @@ def main(cfg):
         image_backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
-    
-    accelerator.print(f"Info: {cfg.model.architecture} backbone initialized.")
 
     image_feature_comb = models.FeatureVisionTransformer(
         patch_dim=image_backbone_embed_dim,
@@ -139,14 +117,13 @@ def main(cfg):
         depth=cfg.model.feature_comb_num_layers,
         heads=cfg.model.feature_comb_num_heads,
     )
-
-    accelerator.print(f"Info: feature combination model initialized.")
     
     # Initialize text backbone
-    text_backbone = AutoModel.from_pretrained(cfg.model.text_encoder, trust_remote_code=True)
+    text_backbone = AutoModel.from_pretrained(
+        pretrained_model_name_or_path=cfg.model.text_encoder, 
+        trust_remote_code=True
+    )
     text_backbone_embed_dim = text_backbone.config.hidden_size
-
-    accelerator.print(f"Info: {cfg.model.text_encoder} backbone initialized.")
 
     # Initialize the SigLIP model
     model = SigLIP(
@@ -158,8 +135,6 @@ def main(cfg):
         projection_dim=cfg.model.projection_dim,
     )
 
-    accelerator.print(f"Info: SigLIP model initialized.")
-
     # Intialize criterion
     criterion = SigLIPLoss(
         learnable_t=cfg.model.learnable_t,
@@ -169,16 +144,12 @@ def main(cfg):
         init_b=cfg.model.init_b,
     )
 
-    accelerator.print(f"Info: SigLIP loss initialized.")
-
     # Initialize optimizer
     optimizer = AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
-
-    accelerator.print(f"Info: AdamW optimizer initialized.")
 
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion, optimizer = accelerator.prepare(
@@ -252,7 +223,7 @@ def main(cfg):
                         {
                             "loss": loss.item(),
                             "epoch": epoch,
-                            "lr": lr()[0],
+                            "lr": lr,
                         },
                         step=global_step,
                     )
@@ -293,5 +264,5 @@ def main(cfg):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, default_config_siglip)
-    main(cfg)
+    cfg, accelerator = setup(args, default_config_siglip)
+    main(cfg, accelerator)
