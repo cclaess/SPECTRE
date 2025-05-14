@@ -8,7 +8,8 @@ import numpy as np
 import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
-from transformers import AutoModel, AutoTokenizer
+from safetensors import safe_open
+from transformers import Qwen2TokenizerFast, Qwen2Config, Qwen2Model
 
 import spectre.models as models
 from spectre.ssl.frameworks import SigLIP
@@ -63,8 +64,8 @@ def main(cfg, accelerator: Accelerator):
     # Get dataloader
     collate_fn = partial(
         extended_collate_siglip,
-        tokenizer=AutoTokenizer.from_pretrained(
-            cfg.model.text_tokenizer, trust_remote_code=True
+        tokenizer=Qwen2TokenizerFast.from_pretrained(
+            cfg.model.text_tokenizer,
         ),
     )
     data_loader = get_dataloader(
@@ -119,10 +120,36 @@ def main(cfg, accelerator: Accelerator):
     )
     
     # Initialize text backbone
-    text_backbone = AutoModel.from_pretrained(
-        pretrained_model_name_or_path=cfg.model.text_encoder, 
-        trust_remote_code=True
+    # TODO: add support for other text backbones
+    # AutoModel is not yet compatible with newest Pytorch Docker image
+    text_backbone = Qwen2Model(Qwen2Config(
+        vocab_size=151646,
+        hidden_size=1536,
+        intermediate_size=8960,
+        num_hidden_layers=28,
+        num_attention_heads=12,
+        num_key_value_heads=2,
+        hidden_act="silu",
+        max_position_embeddings=131072,
+        initializer_range=0.02,
+        rms_norm_eps=1e-06,
+        use_cache=True,
+        tie_word_embeddings=False,
+        rope_theta=1000000.0,
+        rope_scaling=None,
+        use_sliding_window=False,
+        sliding_window=131072,
+        max_window_layers=21,
+        attention_dropout=0.0,
+    ))
+    text_pretrained_weights = {}
+    with safe_open(cfg.model.text_encoder_weights, framework="pt", device="cpu") as f:
+        for k in f.keys():
+            text_pretrained_weights[k.replace("model.", "")] = f.get_tensor(k)
+    msg = text_backbone.load_state_dict(
+        text_pretrained_weights, strict=False
     )
+    accelerator.print(f"Pretrained weights of text encoder loaded with msg: {msg}")
     text_backbone_embed_dim = text_backbone.config.hidden_size
 
     # Initialize the SigLIP model
