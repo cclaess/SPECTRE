@@ -113,7 +113,7 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
             report += f"Impressions: {selected_impression}\n"
 
         # check if icd10_codes is empty or not
-        if icd10_codes:
+        if len(icd10_codes) > 0:
                 
             # Draw a value between icd10_range_lower and 1.0 to determine the percentage of ICD10 codes to include.
             icd10_percentage = self.R.uniform(self.icd10_range_lower, 1.0)
@@ -127,13 +127,6 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
             
             # Add ICD10 codes to the report.
             report += f"ICD10: {', '.join(selected_icd10)}\n"
-        
-        # Construct the final report string.
-        # report = (
-        #     f"Findings: {selected_finding}\n"
-        #     f"Impressions: {selected_impression}\n"
-        #     f"ICD10: {', '.join(selected_icd10) if selected_icd10 else ''}"
-        # )
         
         data["report"] = report
         return data
