@@ -57,32 +57,11 @@ def get_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(cfg):
-
-    # Initialize accelerator
-    dataloader_config = DataLoaderConfiguration(
-        non_blocking=True,
-    )
-    accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
-        log_with="wandb" if cfg.train.log_wandb else None,
-        dataloader_config=dataloader_config,
-    )
+def main(cfg, accelerator: Accelerator):
 
     # Print config
     accelerator.print(cfg)
 
-    # Initialize wandb
-    if cfg.train.log_wandb:
-        accelerator.init_trackers(
-            project_name="spectre",
-            config={k: v for d in cfg.values() for k, v in d.items()},
-            init_kwargs={
-                "name": "lung-nodule-classification-" + cfg.model.architecture,
-                "dir": os.path.join(cfg.train.output_dir, "logs"),
-            },
-        )
-    
     # Get dataloader
     dataset = LUNA25Dataset(
         cfg.train.dataset_path,
@@ -362,6 +341,5 @@ class LUNA25PatchTransform(Compose):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, load_config("classification_test"))
-
-    main(cfg)
+    cfg, accelerator = setup(args, load_config("classification_test"))
+    main(cfg, accelerator)
