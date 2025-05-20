@@ -485,7 +485,7 @@ class VisionTransformer(nn.Module):
     ) -> 'VisionTransformer':
         """Load pretrained model weights."""
         model = cls(**kwargs)
-        state_dict = torch.load(checkpoint_path, map_location='cpu')
+        state_dict = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
         msg = model.load_state_dict(state_dict, strict=False)
         if verbose:
             print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
