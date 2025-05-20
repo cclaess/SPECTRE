@@ -63,23 +63,24 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        icd10_range_lower=1.0,
+        max_num_icd10=35,
         likelyhood_original=0.5,
+        drop_chance=0.3,
         allow_missing_keys: bool = False,
     ):
         """
         Args:
             keys (KeysCollection): Keys to be processed.
-            icd10_range_lower (float): A value between 0 and 1 representing the lower bound 
-                                       for the percentage of ICD10 codes to include.
+            max_num_icd10 (float): Maximum number of ICD10 codes to include in the report.
             likelyhood_original (float): Likelihood weight for selecting the first element.
+            drop_chance (float): Probability of dropping the findings and icd10 if present.
             allow_missing_keys (bool): Whether to allow missing keys in the data.
         """
         MapTransform.__init__(self, keys, allow_missing_keys)
-        self.icd10_range_lower = icd10_range_lower
+        self.max_num_icd10 = max_num_icd10
         self.likelyhood_original = likelyhood_original
         
-        RandomizableTransform.__init__(self, icd10_range_lower, likelyhood_original)
+        RandomizableTransform.__init__(self, max_num_icd10, likelyhood_original)
         
     def __call__(self, data):
         # Expect data to be a dict with keys: 'findings', 'impressions', 'icd10'
@@ -89,11 +90,19 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
         
         # If ICD10 codes come as a string, convert them to a list.
         if isinstance(icd10_codes, str):
-            icd10_codes = icd10_codes.split(",")
-        
+            icd10_codes = icd10_codes.split(";")
+        # if no icd10 codes are present, set it to an empty list
+        if not icd10_codes or torch.isnan(icd10_codes):
+            icd10_codes = []
         
         report = ""
         
+        # Randomly drop findings and icd10 codes based on the drop chance.
+        if self.R.random() < self.drop_chance:
+            findings = []
+        if self.R.random() < self.drop_chance:
+            icd10_codes = []
+
         # Randomly select a finding and impression using weighted probabilities.
         if len(findings) > 0:
             num_elements = len(findings)
@@ -102,6 +111,8 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
         
             # Add finding to the report.
             report += f"Findings: {selected_finding}\n"
+            # Remove the word "Impressions" from the selected finding.
+            selected_finding = selected_finding.replace("Impressions", "").replace("impressions", "")
 
         if len(impressions) > 0:
             num_elements = len(impressions)
@@ -115,13 +126,10 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
         # check if icd10_codes is empty or not
         if len(icd10_codes) > 0:
                 
-            # Draw a value between icd10_range_lower and 1.0 to determine the percentage of ICD10 codes to include.
-            icd10_percentage = self.R.uniform(self.icd10_range_lower, 1.0)
-            num_codes = int(len(icd10_codes) * icd10_percentage)
-        
-            if num_codes > 0:
+            # Randomly      
+            if self.max_num_icd10 > 0:
                 # Ensure we do not exceed the available number of codes.
-                num_codes = min(num_codes, len(icd10_codes))
+                num_codes = min(self.max_num_icd10, len(icd10_codes))
                 # Sample a subset of ICD10 codes without replacement.
                 selected_icd10 = self.R.choice(icd10_codes, size=num_codes, replace=False).tolist()
             
