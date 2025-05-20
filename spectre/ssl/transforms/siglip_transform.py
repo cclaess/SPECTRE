@@ -79,6 +79,7 @@ class GenerateReportTransform(RandomizableTransform, MapTransform):
         MapTransform.__init__(self, keys, allow_missing_keys)
         self.max_num_icd10 = max_num_icd10
         self.likelyhood_original = likelyhood_original
+        self.drop_chance = drop_chance
         
         RandomizableTransform.__init__(self, max_num_icd10, likelyhood_original)
         

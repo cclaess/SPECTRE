@@ -100,7 +100,6 @@ def extended_collate_siglip(
         ], dim=0) for sample in samples_list
     ], dim=0)
     collated_data["report"] = [sample[0]["report"] for sample in samples_list]
-    print(f"collated_data['report']: {collated_data['report'][0]}")
 
     tokenizer_output = tokenizer.batch_encode_plus(
         collated_data["report"], 
