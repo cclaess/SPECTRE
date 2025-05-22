@@ -18,6 +18,7 @@ from spectre.ssl.losses import SigLIPLoss
 from spectre.ssl.transforms import SigLIPTransform
 from spectre.configs import default_config_siglip
 from spectre.utils.config import setup
+from spectre.utils.distributed import get_global_size
 from spectre.utils.dataloader import get_dataloader
 from spectre.utils.collate import extended_collate_siglip
 from spectre.utils.checkpointing import load_state, save_state
@@ -76,6 +77,7 @@ def main(cfg, accelerator: Accelerator):
         include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
+        use_gds=cfg.train.use_gds,
         transform=SigLIPTransform(
             dtype="float16" if cfg.train.load_fp16 else "float32",
         ),
@@ -237,9 +239,17 @@ def main(cfg, accelerator: Accelerator):
                 text_embeddings = accelerator.gather(text_embeddings)
 
                 loss = criterion(image_embeddings, text_embeddings)
+                # Divide loss by number of devices
+                loss = loss / get_global_size()
 
                 # Backward pass
                 accelerator.backward(loss)
+
+                # Set gradients of image and text encoders to zero in first epoch
+                if epoch == 0:
+                    for name, param in model.named_parameters():
+                        if "image_backbone" in name or "text_backbone" in name:
+                            param.grad = None
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
