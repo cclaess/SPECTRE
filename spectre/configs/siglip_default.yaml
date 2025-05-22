@@ -17,6 +17,7 @@ train:
   drop_last: true
   cache_dataset: true
   cache_dir: /data/cache/monai/
+  use_gds: false
   log_wandb: true
   log_freq: 1
 optim:
