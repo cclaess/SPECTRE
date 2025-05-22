@@ -5,6 +5,7 @@ from typing import Callable
 from monai.data import Dataset
 
 from spectre.data.cache_dataset import CacheDataset
+from spectre.data.gds_dataset import GDSDataset
 
 
 class AbdomenCT1KDataset(Dataset):
@@ -36,6 +37,30 @@ class AbdomenCT1KCacheDataset(CacheDataset):
         cache_dir: str,
         include_labels: bool = False, 
         transform: Callable = None
+    ):
+        image_paths = Path(data_dir).glob("Case*.nii.gz")
+
+        if include_labels:
+            label_paths = Path(data_dir).glob(os.path.join("Mask", "Case*.nii.gz"))
+
+            data = [{
+                "image": str(image_path),
+                "label": str(label_path)
+            } for image_path, label_path in zip(image_paths, label_paths)]
+        else:
+            data = [{"image": str(image_path)} for image_path in image_paths]
+
+        super().__init__(data=data, transform=transform, cache_dir=cache_dir)
+
+
+class AbdomenCT1KGDSDataset(GDSDataset):
+    def __init__(
+        self, 
+        data_dir: str,
+        cache_dir: str,
+        device: int,
+        include_labels: bool = False, 
+        transform: Callable = None,
     ):
         image_paths = Path(data_dir).glob("Case*.nii.gz")
 
