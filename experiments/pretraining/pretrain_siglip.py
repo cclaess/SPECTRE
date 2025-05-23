@@ -9,7 +9,12 @@ import numpy as np
 import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
-from transformers import XLMRobertaModel, XLMRobertaTokenizerFast, XLMRobertaConfig
+from transformers import (
+    XLMRobertaModel, 
+    XLMRobertaTokenizerFast, 
+    XLMRobertaConfig,
+)
+
 import spectre.models as models
 from spectre.ssl.frameworks import SigLIP
 from spectre.ssl.losses import SigLIPLoss
