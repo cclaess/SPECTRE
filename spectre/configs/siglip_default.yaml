@@ -36,8 +36,8 @@ model:
   feature_comb_embed_dim: 768
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12
-  text_tokenizer: NovaSearch/stella_en_1.5B_v5
-  text_encoder_weights: /data/checkpoints/NovaSearch/stella_en_1.5B_v5/model.safetensors
+  text_tokenizer: BAAI/bge-m3
+  text_encoder_weights: /data/checkpoints/BAAI/bge-m3/pytorch_model.bin
   projection_dim: 4096
   learnable_t: true
   learnable_b: true

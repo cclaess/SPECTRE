@@ -9,9 +9,7 @@ import numpy as np
 import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
-from safetensors import safe_open
-from transformers import Qwen2TokenizerFast, Qwen2Config, Qwen2Model
-
+from transformers import XLMRobertaModel, XLMRobertaTokenizerFast, XLMRobertaConfig
 import spectre.models as models
 from spectre.ssl.frameworks import SigLIP
 from spectre.ssl.losses import SigLIPLoss
@@ -66,7 +64,7 @@ def main(cfg, accelerator: Accelerator):
     # Get dataloader
     collate_fn = partial(
         extended_collate_siglip,
-        tokenizer=Qwen2TokenizerFast.from_pretrained(
+        tokenizer=XLMRobertaTokenizerFast.from_pretrained(
             cfg.model.text_tokenizer,
         ),
     )
@@ -125,32 +123,39 @@ def main(cfg, accelerator: Accelerator):
     # Initialize text backbone
     # TODO: add support for other text backbones
     # AutoModel is not yet compatible with newest Pytorch Docker image
-    text_backbone = Qwen2Model(Qwen2Config(
-        vocab_size=151646,
-        hidden_size=1536,
-        intermediate_size=8960,
-        num_hidden_layers=28,
-        num_attention_heads=12,
-        num_key_value_heads=2,
-        hidden_act="silu",
-        max_position_embeddings=131072,
-        initializer_range=0.02,
-        rms_norm_eps=1e-06,
-        use_cache=True,
-        tie_word_embeddings=False,
-        rope_theta=1000000.0,
-        rope_scaling=None,
-        use_sliding_window=False,
-        sliding_window=131072,
-        max_window_layers=21,
-        attention_dropout=0.0,
-    ))
-    text_pretrained_weights = {}
-    with safe_open(cfg.model.text_encoder_weights, framework="pt", device="cpu") as f:
-        for k in f.keys():
-            text_pretrained_weights[k.replace("model.", "")] = f.get_tensor(k)
+    config = {
+        "architectures": [
+            "XLMRobertaModel"
+        ],
+        "attention_probs_dropout_prob": 0.1,
+        "bos_token_id": 0,
+        "classifier_dropout": None,
+        "eos_token_id": 2,
+        "hidden_act": "gelu",
+        "hidden_dropout_prob": 0.1,
+        "hidden_size": 1024,
+        "initializer_range": 0.02,
+        "intermediate_size": 4096,
+        "layer_norm_eps": 1e-05,
+        "max_position_embeddings": 8194,
+        "model_type": "xlm-roberta",
+        "num_attention_heads": 16,
+        "num_hidden_layers": 24,
+        "output_past": True,
+        "pad_token_id": 1,
+        "position_embedding_type": "absolute",
+        "torch_dtype": "float32",
+        "transformers_version": "4.52.3",
+        "type_vocab_size": 1,
+        "use_cache": True,
+        "vocab_size": 250002
+    }
+    
+    text_backbone = XLMRobertaModel(XLMRobertaConfig.from_dict(config))
+
+    text_pretrained_weights = torch.load(cfg.model.text_encoder_weights, map_location="cpu")
     msg = text_backbone.load_state_dict(
-        text_pretrained_weights, strict=False
+        text_pretrained_weights, strict=True
     )
     accelerator.print(f"Pretrained weights of text encoder loaded with msg: {msg}")
     text_backbone_embed_dim = text_backbone.config.hidden_size

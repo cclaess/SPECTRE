@@ -11,3 +11,5 @@ nibabel
 SimpleITK
 transformers
 tokenizers
+FlagEmbedding[finetune]
+peft
