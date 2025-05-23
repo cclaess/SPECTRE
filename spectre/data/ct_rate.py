@@ -24,14 +24,16 @@ class CTRateDataset(Dataset):
             if subset == "train":
                 data = [{
                     "image": str(image_path),
-                    "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
-
-                    "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
-
+                    "findings": [val for val in [
+                        reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]
+                    ] if isinstance(val, str)],
+                    "impressions": [val for val in [
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]
+                    ] if isinstance(val, str)],
                 } for image_path in image_paths]
             else:
                 data = [{
@@ -64,20 +66,21 @@ class CTRateCacheDataset(CacheDataset):
             if subset == "train":
                 data = [{
                     "image": str(image_path),
-                    "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
-
-                    "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
-
+                    "findings": [val for val in [
+                        reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]
+                    ] if isinstance(val, str)],
+                    "impressions": [val for val in [
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]
+                    ] if isinstance(val, str)],
                 } for image_path in image_paths]
             else:
                 data = [{
                     "image": str(image_path),
                     "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0]],
-
                     "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0]],
 
                 } for image_path in image_paths]
@@ -105,14 +108,16 @@ class CTRateGDSDataset(GDSDataset):
             if subset == "train":
                 data = [{
                     "image": str(image_path),
-                    "findings": [reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]],
-
-                    "impressions": [reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
-                    reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]],
-
+                    "findings": [val for val in [
+                        reports[reports["VolumeName"] == image_path.name]["Findings_EN"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Findings_1"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Findings_2"].values[0]
+                    ] if isinstance(val, str)],
+                    "impressions": [val for val in [
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_EN"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_1"].values[0],
+                        reports[reports["VolumeName"] == image_path.name]["Impressions_2"].values[0]
+                    ] if isinstance(val, str)],
                 } for image_path in image_paths]
             else:
                 data = [{

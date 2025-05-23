@@ -27,10 +27,13 @@ class InspectDataset(Dataset):
 
             data = [{
                 "image": str(image_path),
-                "impressions": [reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
-                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
-                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]],
-
+                "impressions": [
+                    val for val in [
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]
+                    ] if isinstance(val, str)
+                ]
             } for image_path in image_paths]
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]
@@ -54,10 +57,13 @@ class InspectCacheDataset(CacheDataset):
 
             data = [{
                 "image": str(image_path),
-                "impressions": [reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
-                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
-                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]],
-
+                "impressions": [
+                    val for val in [
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]
+                    ] if isinstance(val, str)
+                ]
             } for image_path in image_paths]
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]
@@ -81,11 +87,13 @@ class InspectGDSDataset(GDSDataset):
             reports = pd.read_excel(text_path)
 
             data = [{
-                "image": str(image_path),
-                "impressions": [reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
-                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
-                reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]],
-
+                "impressions": [
+                    val for val in [
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                        reports[reports["impression_id"] == parse_name(image_path)]["Impressions_2"].values[0]
+                    ] if isinstance(val, str)
+                ]
             } for image_path in image_paths]
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]

@@ -33,16 +33,21 @@ class MerlinDataset(Dataset):
 
                 data = [{
                     "image": str(image_path),
-                    "findings": [reports[reports["study id"] == parse_name(image_path)]["Findings_EN"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Findings_1"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Findings_2"].values[0]],
-
-                    "impressions": [reports[reports["study id"] == parse_name(image_path)]["Impressions_EN"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Impressions_1"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Impressions_2"].values[0]],
-
+                    "findings": [
+                        val for val in [
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_EN"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_1"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_2"].values[0]
+                        ] if isinstance(val, str)
+                    ],
+                    "impressions": [
+                        val for val in [
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_2"].values[0]
+                        ] if isinstance(val, str)
+                    ],
                     "icd10": reports[reports["study id"] == parse_name(image_path)]["FULL ICD10 Cleaned"].values[0]
-
                 } for image_path in image_paths]
 
             else:
@@ -79,16 +84,21 @@ class MerlinCacheDataset(CacheDataset):
             if subset == "train":
                 data = [{
                     "image": str(image_path),
-                    "findings": [reports[reports["study id"] == parse_name(image_path)]["Findings_EN"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Findings_1"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Findings_2"].values[0]],
-
-                    "impressions": [reports[reports["study id"] == parse_name(image_path)]["Impressions_EN"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Impressions_1"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Impressions_2"].values[0]],
-
+                    "findings": [
+                        val for val in [
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_EN"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_1"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_2"].values[0]
+                        ] if isinstance(val, str)
+                    ],
+                    "impressions": [
+                        val for val in [
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_2"].values[0]
+                        ] if isinstance(val, str)
+                    ],
                     "icd10": reports[reports["study id"] == parse_name(image_path)]["FULL ICD10 Cleaned"].values[0]
-
                 } for image_path in image_paths]
             else:
                 data = [{
@@ -123,16 +133,21 @@ class MerlinGDSDataset(GDSDataset):
             if subset == "train":
                 data = [{
                     "image": str(image_path),
-                    "findings": [reports[reports["study id"] == parse_name(image_path)]["Findings_EN"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Findings_1"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Findings_2"].values[0]],
-
-                    "impressions": [reports[reports["study id"] == parse_name(image_path)]["Impressions_EN"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Impressions_1"].values[0],
-                    reports[reports["study id"] == parse_name(image_path)]["Impressions_2"].values[0]],
-
+                    "findings": [
+                        val for val in [
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_EN"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_1"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Findings_2"].values[0]
+                        ] if isinstance(val, str)
+                    ],
+                    "impressions": [
+                        val for val in [
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_EN"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_1"].values[0],
+                            reports[reports["study id"] == parse_name(image_path)]["Impressions_2"].values[0]
+                        ] if isinstance(val, str)
+                    ],
                     "icd10": reports[reports["study id"] == parse_name(image_path)]["FULL ICD10 Cleaned"].values[0]
-
                 } for image_path in image_paths]
             else:
                 data = [{
