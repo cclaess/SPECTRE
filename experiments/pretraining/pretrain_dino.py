@@ -69,6 +69,7 @@ def main(cfg, accelerator: Accelerator):
         include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
+        use_gds=cfg.train.use_gds,
         transform=DINOTransform(
             dtype="float16" if cfg.train.load_fp16 else "float32",
         ),
