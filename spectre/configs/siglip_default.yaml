@@ -21,10 +21,11 @@ train:
   log_wandb: true
   log_freq: 1
 optim:
-  epochs: 100
-  base_lr: 1.0e-05
+  epochs: 250
+  base_lr: 1.0e-04
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 0
+  freeze_backbone_epochs: 25
   min_lr: 1.0e-08
   clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024
