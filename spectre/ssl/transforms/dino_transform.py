@@ -1,6 +1,8 @@
 from copy import deepcopy
 from typing import Tuple, Mapping, Hashable, Any, List
 
+import torch
+import numpy as np
 from monai.transforms import (
     Compose,
     LoadImaged,
@@ -9,6 +11,7 @@ from monai.transforms import (
     Orientationd,
     Spacingd,
     SpatialPadd,
+    CastToTyped,
     ResizeWithPadOrCropd,
     RandSpatialCropSamples,
     Resize,
@@ -25,7 +28,9 @@ class DINOTransform(Compose):
         local_crop_size: Tuple[int, int, int] = (48, 48, 24),
         num_global_crops: int = 2,
         num_local_crops: int = 8,
+        dtype: str = "float32",
     ):
+        assert dtype in ["float16", "float32"], "dtype must be either 'float16' or 'float32'"
         super().__init__(
             [
                 LoadImaged(keys=("image",)),
@@ -39,9 +44,14 @@ class DINOTransform(Compose):
                     clip=True,
                 ),
                 Orientationd(keys=("image",), axcodes="RAS"),
-                Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
+                Spacingd(
+                    keys=("image",), 
+                    pixdim=(0.75, 0.75, 1.5), 
+                    mode=("bilinear",),
+                ),
                 ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, -1)),
                 SpatialPadd(keys=("image",), spatial_size=(-1, -1, input_size[2])),
+                CastToTyped(keys=("image",), dtype=getattr(torch, dtype)),
                 DINORandomCropTransformd(
                     keys=("image",),
                     input_size=input_size,
@@ -49,6 +59,7 @@ class DINOTransform(Compose):
                     num_base_patches=36,
                     num_global_crops=num_global_crops,
                     num_local_crops=num_local_crops,
+                    dtype=dtype,
                 ),
             ]
         )
@@ -85,6 +96,7 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
         num_base_patches: int = 36,
         num_global_crops: int = 2,
         num_local_crops: int = 8,
+        dtype: str = "float32",
         lazy: bool = False,
     ) -> None:
         MapTransform.__init__(self, keys)
@@ -94,8 +106,16 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
         self.num_base_patches = num_base_patches
         self.num_global_crops = num_global_crops
         self.num_local_crops = num_local_crops
-        self.resize_global = Resize(spatial_size=input_size, mode="trilinear")
-        self.resize_local = Resize(spatial_size=local_crop_size, mode="trilinear")
+        self.resize_global = Resize(
+            spatial_size=input_size, 
+            mode="trilinear",
+            dtype=getattr(torch, dtype),
+        )
+        self.resize_local = Resize(
+            spatial_size=local_crop_size, 
+            mode="trilinear",
+            dtype=getattr(torch, dtype),
+        )
 
     def randomize(self, data: Any = None) -> None:
         # Set a sub-seed for consistency across the different cropping operations.

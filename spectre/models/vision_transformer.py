@@ -485,7 +485,7 @@ class VisionTransformer(nn.Module):
     ) -> 'VisionTransformer':
         """Load pretrained model weights."""
         model = cls(**kwargs)
-        state_dict = torch.load(checkpoint_path, map_location='cpu')
+        state_dict = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
         msg = model.load_state_dict(state_dict, strict=False)
         if verbose:
             print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
@@ -570,6 +570,50 @@ def vit_base_patch32_128(
         embed_dim=768,
         depth=12,
         num_heads=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
+
+
+def vit_large_patch16_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Large model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
+        img_size=(128, 128, 64),
+        patch_size=(16, 16, 8),
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
+
+
+def vit_large_patch32_128(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Large model with 3D patch embedding, patch size [32, 32, 16] and input size [128, 128, 64].
+    """
+    kwargs = dict(
+        img_size=(128, 128, 64),
+        patch_size=(32, 32, 16),
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
         mlp_ratio=4,
         qkv_bias=True,
         norm_layer=nn.LayerNorm,

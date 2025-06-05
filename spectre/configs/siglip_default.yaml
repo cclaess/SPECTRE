@@ -8,32 +8,38 @@ train:
   data_dir: /data/
   output_dir: .
   saveckp_freq: 20
+  resume_ckp: true
   seed: 0
   num_workers: 10
+  load_fp16: true
+  pin_memory: true
+  persistent_workers: true
+  drop_last: true
   cache_dataset: true
   cache_dir: /data/cache/monai/
+  use_gds: false
   log_wandb: true
   log_freq: 1
 optim:
-  epochs: 100
-  base_lr: 0.004
+  epochs: 250
+  base_lr: 1.0e-04
   lr: 0.  # will be set after applying scaling rule
-  warmup_epochs: 10
-  min_lr: 1.0e-06
-  clip_grad_norm: 3.0
+  warmup_epochs: 0
+  freeze_backbone_epochs: 25
+  min_lr: 1.0e-08
+  clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024
   adamw_beta1: 0.9
-  adamw_beta2: 0.999
+  adamw_beta2: 0.95
 model:
   architecture: vit_base_patch16_128
   pretrained_weights: null
   feature_comb_embed_dim: 768
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12
-  text_tokenizer: infgrad/jasper_en_vision_language_v1
-  text_encoder_config: infgrad/jasper_en_vision_language_v1
-  text_encoder_weights: weights/text/jasper_en_vision_language_v1_base.pth
-  projection_dim: 2048
+  text_tokenizer: BAAI/bge-m3
+  text_encoder_weights: /data/checkpoints/BAAI/bge-m3/pytorch_model.bin
+  projection_dim: 4096
   learnable_t: true
   learnable_b: true
   init_t: 1.0

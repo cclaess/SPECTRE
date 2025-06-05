@@ -20,7 +20,7 @@ from spectre.utils.dataloader import get_dataloader
 from spectre.utils.masking import MaskingGenerator
 from spectre.utils.collate import extended_collate_dino
 from spectre.utils.checkpointing import load_state, save_state
-from spectre.utils.scheduler import CosineWarmupScheduler, cosine_schedule
+from spectre.utils.scheduler import cosine_schedule, cosine_warmup_schedule
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -50,32 +50,16 @@ def get_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(cfg):
+def main(cfg, accelerator: Accelerator):
     """
     Main function to run pretraining.
 
     Args:
         cfg: Configuration object containing all hyperparameters and settings.
+        accelerator: Accelerator object for distributed training.
     """
-    # Initialize accelerator
-    accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
-        log_with="wandb" if cfg.train.log_wandb else None,
-    )
-
     # Print config
     accelerator.print(cfg)
-
-    # Initialize wandb
-    if cfg.train.log_wandb:
-        accelerator.init_trackers(
-            project_name="spectre",
-            config={k: v for d in cfg.values() for k, v in d.items()},
-            init_kwargs={
-                "name": "dinov2-pretrain-" + cfg.model.architecture,
-                "dir": os.path.join(cfg.train.output_dir, "logs"),
-            },
-        )
 
     # Initialize backbone
     if (
@@ -109,12 +93,16 @@ def main(cfg):
         include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
-        transform=DINOTransform(),
+        transform=DINOTransform(
+            dtype="float16" if cfg.train.load_fp16 else "float32",
+        ),
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
-        pin_memory=True,
+        pin_memory=cfg.train.pin_memory,
         shuffle=True,
         collate_fn=collate_fn,
+        drop_last=cfg.train.drop_last,
+        persistent_workers=cfg.train.persistent_workers,
     )
 
     # Initialize DINO model
@@ -152,20 +140,11 @@ def main(cfg):
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
 
-    # Initialize learning rate scheduler
-    lr_scheduler = CosineWarmupScheduler(
-        optimizer,
-        warmup_epochs=cfg.optim.warmup_epochs * len(data_loader),
-        max_epochs=cfg.optim.epochs * len(data_loader),
-        start_value=cfg.optim.lr,
-        end_value=cfg.optim.min_lr,
-    )
-
     # Prepare model, data, and optimizer for training
     model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
-        optimizer, lr_scheduler = accelerator.prepare(
+        optimizer = accelerator.prepare(
             model, data_loader, criterion_dino, criterion_koleo,
-            criterion_ibot, optimizer, lr_scheduler,
+            criterion_ibot, optimizer,
         )
     
     # Keep unwrapped model for easier access to individual components
@@ -177,17 +156,22 @@ def main(cfg):
             os.path.join(cfg.train.output_dir, "checkpoint.pt"),
             model=unwrapped_model,
             optimizer=optimizer, 
-            lr_scheduler=lr_scheduler,
             criterion_dino=criterion_dino, 
             criterion_koleo=criterion_koleo,
             criterion_ibot=criterion_ibot,
         )
     else:
         start_epoch: int = 0
+    if start_epoch > 0:
+        start_epoch += 1
+        accelerator.print(f"Resuming training from epoch {start_epoch}.")
 
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
+    warmup_num_steps = cfg.optim.warmup_epochs * len(data_loader)
+
+    
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
@@ -196,6 +180,18 @@ def main(cfg):
         for batch in data_loader:
 
             with accelerator.accumulate(model):
+
+                # Update learning rate
+                lr = cosine_warmup_schedule(
+                    global_step,
+                    max_steps=total_num_steps,
+                    start_value=cfg.optim.lr,
+                    end_value=cfg.optim.min_lr,
+                    warmup_steps=warmup_num_steps,
+                    warmup_start_value=0.0,
+                )
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
 
                 # Update momentum
                 momentum = cosine_schedule(
@@ -280,14 +276,18 @@ def main(cfg):
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
                         f"Loss: {loss.item():8f}, "
-                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
+                        f"LR: {lr:.8f}, "
                         f"Weight Decay: {weight_decay:.8f}, "
                         f"Momentum: {momentum:.8f}"
                     )
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            "lr": lr_scheduler.get_last_lr()[0],
+                            "dino_loss": dino_loss.item(),
+                            "koleo_loss": koleo_loss.item(),
+                            "ibot_loss": ibot_loss.item(),
+                            "epoch": epoch,
+                            "lr": lr,
                             "weight_decay": weight_decay,
                             "momentum": momentum,
                         },
@@ -297,33 +297,16 @@ def main(cfg):
                 # Zero gradients
                 optimizer.zero_grad()
 
-                # Update learning rate
-                lr_scheduler.step()
-
                 # Update global step
                 global_step += 1
 
         # Save checkpoint
-        save_state(
-            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
-            epoch=epoch,
-            model=unwrapped_model,
-            optimizer=optimizer,
-            lr_scheduler=lr_scheduler,
-            criterion_dino=criterion_dino,
-            criterion_koleo=criterion_koleo,
-            criterion_ibot=criterion_ibot,
-            torch_random_state=torch.random.get_rng_state(),
-            numpy_random_state=tuple(np.random.get_state()),
-            random_random_state=random.getstate(),
-        )
-        if (epoch + 1) % cfg.train.saveckp_freq == 0:
+        if accelerator.is_main_process:
             save_state(
-                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1: 04}.pt"),
+                os.path.join(cfg.train.output_dir, "checkpoint.pt"),
                 epoch=epoch,
                 model=unwrapped_model,
                 optimizer=optimizer,
-                lr_scheduler=lr_scheduler,
                 criterion_dino=criterion_dino,
                 criterion_koleo=criterion_koleo,
                 criterion_ibot=criterion_ibot,
@@ -331,6 +314,20 @@ def main(cfg):
                 numpy_random_state=tuple(np.random.get_state()),
                 random_random_state=random.getstate(),
             )
+            if (epoch + 1) % cfg.train.saveckp_freq == 0:
+                save_state(
+                    os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
+                    epoch=epoch,
+                    model=unwrapped_model,
+                    optimizer=optimizer,
+                    criterion_dino=criterion_dino,
+                    criterion_koleo=criterion_koleo,
+                    criterion_ibot=criterion_ibot,
+                    torch_random_state=torch.random.get_rng_state(),
+                    numpy_random_state=tuple(np.random.get_state()),
+                    random_random_state=random.getstate(),
+                )
+        accelerator.wait_for_everyone()
     
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
@@ -339,5 +336,5 @@ def main(cfg):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, default_config_dinov2)
-    main(cfg)
+    cfg, accelerator = setup(args, default_config_dinov2)
+    main(cfg, accelerator)

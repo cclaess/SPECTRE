@@ -16,15 +16,20 @@ train:
   resume_ckp: true
   seed: 0
   num_workers: 10
+  load_fp16: true
+  pin_memory: true
+  persistent_workers: true
+  drop_last: true
   cache_dataset: true
   cache_dir: /data/cache/monai/
+  use_gds: false
   log_wandb: true
   log_freq: 1
 optim:
   epochs: 100
   weight_decay: 0.04
   weight_decay_end: 0.4
-  base_lr: 0.004
+  base_lr: 0.0005
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 10
   min_lr: 1.0e-06

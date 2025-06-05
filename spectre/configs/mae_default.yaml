@@ -16,6 +16,10 @@ train:
   resume_ckp: true
   seed: 0
   num_workers: 10
+  load_fp16: true
+  pin_memory: true
+  persistent_workers: true
+  drop_last: true
   cache_dataset: true
   cache_dir: /data/cache/monai/
   log_wandb: true

@@ -18,8 +18,8 @@ class CacheDataset(PersistentDataset):
     """
     Overwrite MONAI's PersistentDataset to support PyTorch 2.6.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, pickle_protocol=pickle.HIGHEST_PROTOCOL, **kwargs):
+        super().__init__(*args, pickle_protocol=pickle_protocol, **kwargs)
     
     def _cachecheck(self, item_transformed):
         """
@@ -57,10 +57,14 @@ class CacheDataset(PersistentDataset):
                 if "Invalid magic number; corrupt file" in str(e):
                     warnings.warn(f"Corrupt cache file detected: {hashfile}. Deleting and recomputing.")
                     hashfile.unlink()
+                elif "PytorchStreamReader failed reading zip archive: failed finding central directory" in str(e):
+                    warnings.warn(f"Corrupt cache file detected: {hashfile}. Deleting and recomputing.")
+                    hashfile.unlink()
                 else:
                     raise e
 
         _item_transformed = self._pre_transform(deepcopy(item_transformed))  # keep the original hashed
+        
         if hashfile is None:
             return _item_transformed
         try:
@@ -84,4 +88,4 @@ class CacheDataset(PersistentDataset):
                         pass
         except PermissionError:  # project-monai/monai issue #3613
             pass
-        return _item_transformed    
+        return _item_transformed

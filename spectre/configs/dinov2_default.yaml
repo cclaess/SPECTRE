@@ -16,6 +16,10 @@ train:
   resume_ckp: true
   seed: 0
   num_workers: 10
+  load_fp16: true
+  pin_memory: true
+  persistent_workers: true
+  drop_last: true
   cache_dataset: true
   cache_dir: /data/cache/monai/
   log_wandb: true
@@ -39,9 +43,9 @@ model:
   bottleneck_dim: 256
   output_dim: 65536
   momentum_teacher: 0.992
-  momentum_teacher_end: 0.999
+  momentum_teacher_end: 1.0
   warmup_teacher_temp: 0.04
-  teacher_temp: 0.04
+  teacher_temp: 0.07
   warmup_teacher_temp_epochs: 30
   student_temp: 0.1
   center_momentum: 0.9

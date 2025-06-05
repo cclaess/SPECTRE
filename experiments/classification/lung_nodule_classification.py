@@ -9,10 +9,11 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
-from accelerate import Accelerator
+from accelerate import Accelerator, DataLoaderConfiguration
 from torch.optim import AdamW
 from torch.utils.data import Dataset, Subset
 from monai.data import MetaTensor, DataLoader
+from monai.metrics import compute_roc_auc
 from monai.transforms import (
     Compose,
     EnsureChannelFirst,
@@ -26,7 +27,7 @@ from monai.transforms import (
 import spectre.models as models
 from spectre.utils.config import setup
 from spectre.configs import load_config
-from spectre.utils.scheduler import CosineWarmupScheduler
+from spectre.utils.scheduler import cosine_warmup_schedule
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -56,28 +57,11 @@ def get_args_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(cfg):
-
-    # Initialize accelerator
-    accelerator = Accelerator(
-        gradient_accumulation_steps=cfg.train.grad_accum_steps,
-        log_with="wandb" if cfg.train.log_wandb else None,
-    )
+def main(cfg, accelerator: Accelerator):
 
     # Print config
     accelerator.print(cfg)
 
-    # Initialize wandb
-    if cfg.train.log_wandb:
-        accelerator.init_trackers(
-            project_name="spectre",
-            config={k: v for d in cfg.values() for k, v in d.items()},
-            init_kwargs={
-                "name": "lung-nodule-classification-" + cfg.model.architecture,
-                "dir": os.path.join(cfg.train.output_dir, "logs"),
-            },
-        )
-    
     # Get dataloader
     dataset = LUNA25Dataset(
         cfg.train.dataset_path,
@@ -95,14 +79,18 @@ def main(cfg):
         train_dataset,
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
-        pin_memory=True,
+        pin_memory=cfg.train.pin_memory,
+        persistent_workers=cfg.train.persistent_workers,
+        drop_last=cfg.train.drop_last,
         shuffle=True,
     )
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=cfg.train.batch_size_per_gpu,
-        num_workers=cfg.train.num_workers,
-        pin_memory=True,
+        num_workers=1,
+        pin_memory=cfg.train.pin_memory,
+        persistent_workers=cfg.train.persistent_workers,
+        drop_last=cfg.train.drop_last,
         shuffle=False,
     )
     
@@ -131,7 +119,7 @@ def main(cfg):
         msg = model.load_state_dict(torch.load(cfg.model.pretrained_weights), strict=False)
         accelerator.print(f"Pretrained weights loaded with message: {msg}")
         if cfg.model.linear_only:
-            for name, param in model.parameters():
+            for name, param in model.named_parameters():
                 if name not in ["fc.weight", "fc.bias", "head.weight", "head.bias"]:
                     param.requires_grad = False
 
@@ -145,23 +133,13 @@ def main(cfg):
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
 
-    # Initialize learning rate scheduler
-    lr_scheduler = CosineWarmupScheduler(
-        optimizer,
-        warmup_epochs=cfg.optim.warmup_epochs * len(train_dataloader),
-        max_epochs=cfg.optim.epochs * len(train_dataloader),
-        start_value=cfg.optim.lr,
-        end_value=cfg.optim.min_lr,
-    )
-
     # Prepare model, data, and optimizer for training
-    model, train_dataloader, val_dataloader, criterion, optimizer, lr_scheduler = accelerator.prepare(
+    model, train_dataloader, val_dataloader, criterion, optimizer = accelerator.prepare(
         model,
         train_dataloader,
         val_dataloader,
         criterion,
         optimizer,
-        lr_scheduler,
     )
 
     # Keep unwrapped model for easier access to individual components
@@ -170,6 +148,7 @@ def main(cfg):
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(train_dataloader)
+    warmup_num_steps = cfg.optim.warmup_epochs * len(train_dataloader)
 
     # Start training
     global_step: int = 0
@@ -178,6 +157,18 @@ def main(cfg):
         for batch in train_dataloader:
 
             with accelerator.accumulate(model):
+
+                # Update learning rate
+                lr = cosine_warmup_schedule(
+                    global_step,
+                    max_steps=total_num_steps,
+                    start_value=cfg.optim.lr,
+                    end_value=cfg.optim.min_lr,
+                    warmup_steps=warmup_num_steps,
+                    warmup_start_value=0.0,
+                )
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
 
                 # Forward pass
                 output = model(batch["image"])
@@ -200,12 +191,12 @@ def main(cfg):
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
                         f"Loss: {loss.item():8f}, "
-                        f"LR: {lr_scheduler.get_last_lr()[0]:.8f}, "
+                        f"LR: {lr}, "
                     )
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            "lr": lr_scheduler.get_last_lr()[0],
+                            "lr": lr,
                         },
                         step=global_step,
                     )
@@ -213,36 +204,46 @@ def main(cfg):
                 # Zero gradients
                 optimizer.zero_grad()
 
-                # Update learning rate
-                lr_scheduler.step()
-
                 # Update global step
                 global_step += 1
 
         # Evaluate model
         model.eval()
-        val_loss = torch.tensor([0.], device=accelerator.device)
-        val_steps = 0.
+        predictions = torch.tensor([], device=accelerator.device)
+        labels = torch.tensor([], device=accelerator.device)
+        best_auc: float = 0.0
         with torch.no_grad():
             for batch in val_dataloader:
                 output = model(batch["image"])
-                loss = criterion(output, batch["label"])
-                val_loss += loss
-                val_steps += 1
 
-            val_loss /= val_steps
-            val_loss = accelerator.reduce(val_loss, reduction="mean")
-            val_loss = val_loss.item()
-            accelerator.print(f"Validation loss: {val_loss}")
-            accelerator.log({"val_loss": val_loss}, step=global_step - 1)
+                # Keep all outputs for later analysis
+                predictions = torch.cat((predictions, output.detach()), dim=0)
+                labels = torch.cat((labels, batch["label"]), dim=0)
 
-        if (epoch + 1) % cfg.train.saveckp_freq == 0 or (epoch + 1) == cfg.optim.epochs:
-            accelerator.save_model(
-                model,
-                os.path.join(
-                    cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}"
-                ),
-            )
+        # Get predictions and labels form all devices
+        predictions = accelerator.gather(predictions)
+        labels = accelerator.gather(labels)
+            
+        val_loss = criterion(predictions, labels)
+        val_loss = val_loss.item()
+
+        val_auc = compute_roc_auc(predictions.cpu(), labels.cpu())
+            
+        accelerator.print(f"Validation loss: {val_loss:.4f}")
+        accelerator.print(f"Validation AUC: {val_auc:.4f}")
+        accelerator.log({
+            "val_loss": val_loss,
+            "val_auc": val_auc,
+        }, step=global_step - 1)
+
+        if val_auc > best_auc:
+            best_auc = val_auc
+            if accelerator.is_main_process:
+                torch.save(
+                    unwrapped_model.state_dict(), 
+                    os.path.join(cfg.train.output_dir, f"best_model.pt")
+                )
+        accelerator.wait_for_everyone()
 
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
@@ -331,8 +332,8 @@ class LUNA25PatchTransform(Compose):
             EnsureChannelFirst(channel_dim="no_channel"),
             ScaleIntensityRange(a_min=-1000, a_max=1000, b_min=0.0, b_max=1.0, clip=True),
             Spacing(pixdim=(0.75, 0.75, 1.5), mode="trilinear", lazy=True),
-            RandRotate(range_x=math.pi, range_y=math.pi, range_z=math.pi, prob=0.5, lazy=True),
-            RandAxisFlip(prob=0.5, lazy=True),
+            RandRotate(range_x=math.pi / 6, range_y=math.pi / 6, range_z=math.pi / 6, prob=0.5, lazy=True),
+            # RandAxisFlip(prob=0.5, lazy=True),
             ResizeWithPadOrCrop((128, 128, 64)),
         ])
 
@@ -340,6 +341,5 @@ class LUNA25PatchTransform(Compose):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg = setup(args, load_config("classification_test"))
-
-    main(cfg)
+    cfg, accelerator = setup(args, load_config("classification_test"))
+    main(cfg, accelerator)

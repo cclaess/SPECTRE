@@ -9,6 +9,7 @@ Addional resources:
 Hamamci et al., "Developing Generalist Foundation Models from a Multimodal Dataset for 3D Computed Tomography" (2024),
 https://arxiv.org/abs/2403.17834
 """
+import os
 from typing import Optional
 
 import torch
@@ -32,6 +33,15 @@ class SigLIP(nn.Module):
 
         self.image_projection = nn.Linear(image_embed_dim, projection_dim)
         self.text_projection = nn.Linear(text_embed_dim, projection_dim)
+
+        nn.init.trunc_normal_(self.image_projection.weight, std=0.01)
+        nn.init.trunc_normal_(self.text_projection.weight, std=0.01)
+
+        # Initialize the bias to zero
+        if self.image_projection.bias is not None:
+            nn.init.zeros_(self.image_projection.bias)
+        if self.text_projection.bias is not None:
+            nn.init.zeros_(self.text_projection.bias)
 
     def forward(
         self,
@@ -61,8 +71,6 @@ class SigLIP(nn.Module):
 
         # Compute text embeddings
         text_embeddings = self.text_backbone(input_ids=text_tokens, attention_mask=attention_mask)
-        text_embeddings = text_embeddings.last_hidden_state.masked_fill(~attention_mask[..., None].bool(), 0.0)
-        text_embeddings = text_embeddings.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
-        text_embeddings = self.text_projection(text_embeddings) # (batch, embed_dim)
+        text_embeddings = self.text_projection(text_embeddings.pooler_output) # (batch, embed_dim)
 
         return image_embeddings, text_embeddings

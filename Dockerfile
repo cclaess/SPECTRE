@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:25.03-py3
+FROM nvcr.io/nvidia/pytorch:25.04-py3
 
 RUN apt-get update && apt-get install -y git
 
@@ -7,6 +7,7 @@ RUN pip install -r /app/requirements.txt
 
 COPY spectre /app/spectre
 COPY experiments /app/experiments
+COPY scripts /app/scripts
 
 WORKDIR /app
 ENV PYTHONPATH="${PYTHONPATH}:/app"
