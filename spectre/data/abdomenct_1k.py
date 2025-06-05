@@ -74,4 +74,4 @@ class AbdomenCT1KGDSDataset(GDSDataset):
         else:
             data = [{"image": str(image_path)} for image_path in image_paths]
 
-        super().__init__(data=data, transform=transform, cache_dir=cache_dir)
+        super().__init__(data=data, transform=transform, cache_dir=cache_dir, device=device)
