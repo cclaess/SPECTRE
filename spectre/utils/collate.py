@@ -106,7 +106,7 @@ def extended_collate_siglip(
         add_special_tokens=True,
         padding=True,
         truncation=True,
-        max_length=512,
+        max_length=1024,
     )
     
     collated_data["input_ids"] = torch.tensor(tokenizer_output["input_ids"])
