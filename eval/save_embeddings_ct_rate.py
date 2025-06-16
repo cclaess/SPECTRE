@@ -45,6 +45,9 @@ def get_args_parser():
     parser.add_argument("--image_projection_weights", type=str, default=None, help="Path to the image projection weights")
     parser.add_argument("--text_backbone_weights", type=str, default=None, help="Path to the text backbone weights")
     parser.add_argument("--text_projection_weights", type=str, default=None, help="Path to the text projection weights")
+
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for the dataloader")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for the dataloader")
     return parser
 
 
@@ -94,8 +97,8 @@ def main(args):
     )
     dataloader = DataLoader(
         dataset, 
-        batch_size=4, 
-        num_workers=4,
+        batch_size=args.batch_size, 
+        num_workers=args.num_workers,
         collate_fn=partial(
             extended_collate_siglip, 
             tokenizer=XLMRobertaTokenizerFast.from_pretrained(
