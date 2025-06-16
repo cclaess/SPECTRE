@@ -44,6 +44,8 @@ def main(args):
 
         if emb_path.exists():
             emb = np.load(emb_path)
+            if emb.ndim > 1:
+                emb = emb.flatten()
             embeddings.append(emb)
             labels.append(row["group"])
         else:
