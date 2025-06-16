@@ -58,7 +58,7 @@ def main(args):
     embeddings = np.array(embeddings)
     print(f"Loaded {len(embeddings)} embeddings.")
 
-    tsne = TSNE(n_components=2, random_state=42, perplexity=3)
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
     tsne_result = tsne.fit_transform(embeddings)
 
     group_colors = {
