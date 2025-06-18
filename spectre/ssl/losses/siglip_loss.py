@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,9 +10,9 @@ class SigLIPLoss(nn.Module):
         self, 
         learnable_t: bool = True, 
         learnable_b: bool = True, 
-        normalize: bool = True, 
-        init_t: float = 1.0, 
-        init_b: float = 0.0,
+        normalize: bool = True,
+        init_t: float = math.log(10),  # Default temperature for SigLIP
+        init_b: float = -10.0,  # Default bias for SigLIP
     ):
         """
         SigLip loss for aligning image and text embeddings.
