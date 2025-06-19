@@ -37,8 +37,8 @@ model:
   feature_comb_embed_dim: 768
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12
-  text_tokenizer: BAAI/bge-m3
-  text_encoder_weights: /data/checkpoints/BAAI/bge-m3/pytorch_model.bin
+  text_tokenizer: Qwen/Qwen3-Embedding-0.6B  # BAAI/bge-m3
+  text_encoder_weights: /data/checkpoints/Qwen/Qwen3-Embedding-0.6B/model.safetensors  # /data/checkpoints/BAAI/bge-m3/pytorch_model.bin
   use_lora: true
   lora_r: 8
   lora_alpha: 32
