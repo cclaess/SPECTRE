@@ -63,8 +63,14 @@ class CacheDataset(PersistentDataset):
                 else:
                     raise e
 
-        _item_transformed = self._pre_transform(deepcopy(item_transformed))  # keep the original hashed
-        
+        try:
+            _item_transformed = self._pre_transform(deepcopy(item_transformed))  # keep the original hashed
+        except RuntimeError as e:
+            if "applying transform" in str(e):
+                warnings.warn(f"Transform failed for item {item_transformed}. Skipping this item.")
+                return self._cachecheck(self.data[0])  # Return the first item as a fallback
+
+
         if hashfile is None:
             return _item_transformed
         try:
