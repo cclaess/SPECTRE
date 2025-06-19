@@ -20,12 +20,16 @@ from spectre.ssl.frameworks import SigLIP
 from spectre.ssl.losses import SigLIPLoss
 from spectre.ssl.transforms import SigLIPTransform
 from spectre.configs import default_config_siglip
-from spectre.utils.config import setup
-from spectre.utils.distributed import get_global_size
-from spectre.utils.dataloader import get_dataloader
-from spectre.utils.collate import extended_collate_siglip
-from spectre.utils.checkpointing import load_state, save_state
-from spectre.utils.scheduler import cosine_warmup_schedule
+from spectre.utils import (
+    setup,
+    get_global_size,
+    get_dataloader,
+    extended_collate_siglip,
+    add_lora_adapters,
+    load_state,
+    save_state,
+    cosine_warmup_schedule,
+)
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -165,6 +169,23 @@ def main(cfg, accelerator: Accelerator):
     accelerator.print(f"Pretrained weights of text encoder loaded with msg: {msg}")
     text_backbone_embed_dim = text_backbone.config.hidden_size
 
+    # Add LoRA adapters to text backbone if specified
+    if cfg.model.use_lora and cfg.model.lora_r > 0:
+        add_lora_adapters(
+            text_backbone,
+            r=cfg.model.lora_r,
+            lora_alpha=cfg.model.lora_alpha,
+            lora_dropout=cfg.model.lora_dropout,
+            target_keywords=cfg.model.lora_target_keywords,
+        )
+        for n, p in text_backbone.named_parameters():
+            p.requires_grad = ('lora_' in n)
+        accelerator.print(
+            f"LoRA adapters added to text backbone. Trainable parameters: "
+            f"{sum(p.numel() for p in text_backbone.parameters() if p.requires_grad):,d} / "
+            f"{sum(p.numel() for p in text_backbone.parameters()):,d}."
+        )
+
     # Initialize the SigLIP model
     model = SigLIP(
         image_backbone=image_backbone,
@@ -258,11 +279,12 @@ def main(cfg, accelerator: Accelerator):
                 # Backward pass
                 accelerator.backward(loss)
 
-                # Set gradients of image and text encoders to zero in first epoch
+                # Set gradients of image and text encoders to zero if freezing backbone
                 if epoch < cfg.optim.freeze_backbone_epochs:
                     for name, param in model.named_parameters():
                         if "image_backbone" in name or "text_backbone" in name:
-                            param.grad = None
+                            if param.requires_grad:
+                                param.grad = None
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:

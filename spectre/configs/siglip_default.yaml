@@ -26,7 +26,7 @@ optim:
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 0
   freeze_backbone_epochs: 25
-  min_lr: 1.0e-08
+  min_lr: 1.0e-06
   clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024
   adamw_beta1: 0.9
@@ -39,6 +39,15 @@ model:
   feature_comb_num_heads: 12
   text_tokenizer: BAAI/bge-m3
   text_encoder_weights: /data/checkpoints/BAAI/bge-m3/pytorch_model.bin
+  use_lora: true
+  lora_r: 8
+  lora_alpha: 32
+  lora_dropout: 0.05
+  lora_target_keywords:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
   projection_dim: 4096
   learnable_t: true
   learnable_b: true
