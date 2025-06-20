@@ -207,7 +207,7 @@ def main(args):
                 map_location="cpu", 
                 weights_only=False
             ),
-            strict=True,
+            strict=False,
         )
         text_backbone.to(device).eval()
 
