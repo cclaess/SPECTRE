@@ -57,12 +57,15 @@ def get_dataloader(
                     from spectre.data import CTRateGDSDataset
                     datasets_list.append(CTRateGDSDataset(
                         **kwargs, 
-                        cache_dir=cache_dir,
+                        cache_dir=os.path.join(cache_dir, "CT-RATE"),
                         device=get_global_rank(),
                     ))
                 else:
                     from spectre.data import CTRateCacheDataset
-                    datasets_list.append(CTRateCacheDataset(**kwargs, cache_dir=cache_dir))
+                    datasets_list.append(CTRateCacheDataset(
+                        **kwargs, 
+                        cache_dir=os.path.join(cache_dir, "CT-RATE")
+                    ))
             else:
                 from spectre.data import CTRateDataset
                 datasets_list.append(CTRateDataset(**kwargs))
