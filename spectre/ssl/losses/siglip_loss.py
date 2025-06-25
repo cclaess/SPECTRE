@@ -31,7 +31,12 @@ class SigLIPLoss(nn.Module):
         self.t = nn.Parameter(torch.tensor(init_t)) if learnable_t else init_t
         self.b = nn.Parameter(torch.tensor(init_b)) if learnable_b else init_b
 
-    def forward(self, zimg: torch.Tensor, ztxt: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, 
+        zimg: torch.Tensor, 
+        ztxt: torch.Tensor,
+        return_details: bool = False
+    ) -> torch.Tensor:
         """
         Computes the alignment loss between image and text embeddings.
 
@@ -57,13 +62,25 @@ class SigLIPLoss(nn.Module):
         nll = -torch.sum(loglik, dim=-1)  # Negative log likelihood
         loss = torch.mean(nll)  # Final mean loss
 
+        if not return_details:
+            return loss
+        
+        pos_loglik = torch.diag(loglik)
+        pos_loss = -pos_loglik.sum() / batch_size  # Contribution of positive pairs
+
+        neg_loglik = loglik * (1 - eye)  # Exclude diagonal for negatives
+        neg_loss = -neg_loglik.sum() / batch_size  # Contribution of negative pairs
+
+        return loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
+
         # pos_loglik = F.logsigmoid(torch.diag(logits))  # Log sigmoid for positive pairs
+        # pos_loss = -pos_loglik.mean()
 
         # neg_loglik = F.logsigmoid(-logits)  # Log sigmoid for negative pairs
         # neg_loglik.fill_diagonal_(0)  # Set diagonal to zero for negatives
 
-        # neg_term = neg_loglik.sum() / (batch_size ** 2 - batch_size)  # Average over negative pairs
-        
-        # loss = -pos_loglik.mean() - neg_term  # Combine positive and negative terms
+        # neg_loss = -neg_loglik.sum() / (batch_size ** 2 - batch_size)  # Average over negative pairs
 
-        return loss
+        # loss = pos_loss + neg_loss  # Combine positive and negative terms
+
+        # return loss
