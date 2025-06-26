@@ -75,8 +75,12 @@ class SigLIPLoss(nn.Module):
 
         pos_loglik = torch.diag(F.logsigmoid(logits))
 
+        print("pos_loglik: ", pos_loglik.shape, pos_loglik)
+
         neg_loglik = F.logsigmoid(-logits) * (1 - eye)
         neg_loglik_avg = neg_loglik.sum(dim=-1) / (batch_size - 1)  # Average per sample
+
+        print("neg_loglik_avg: ", neg_loglik_avg)
         
         loss_per_sample = -pos_loglik - neg_loglik_avg
         loss = loss_per_sample.mean()

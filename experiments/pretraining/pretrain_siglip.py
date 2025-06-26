@@ -325,6 +325,11 @@ def main(cfg, accelerator: Accelerator):
                 image_embeddings = accelerator.gather(image_embeddings)
                 text_embeddings = accelerator.gather(text_embeddings)
 
+                print(f"Image embeddings shape: {image_embeddings.shape}")
+                print(f"Text embeddings shape: {text_embeddings.shape}")
+                print(f"Image embeddings: {image_embeddings}")
+                print(f"Text embeddings: {text_embeddings}")
+
                 loss, details = criterion(image_embeddings, text_embeddings, return_details=True)
 
                 # Backward pass
