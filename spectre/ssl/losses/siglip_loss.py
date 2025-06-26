@@ -85,6 +85,6 @@ class SigLIPLoss(nn.Module):
             return loss
         
         pos_loss = -pos_loglik.sum() / batch_size  # Contribution of positive pairs
-        neg_loss = neg_loglik_avg.sum() / batch_size  # Contribution of negative pairs
+        neg_loss = -neg_loglik_avg.sum() / batch_size  # Contribution of negative pairs
 
         return loss, {"pos_loss": pos_loss.item(), "neg_loss": neg_loss.item()}
