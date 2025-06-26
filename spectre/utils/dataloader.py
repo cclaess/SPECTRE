@@ -33,7 +33,7 @@ def get_dataloader(
 
     if include_reports:
         assert set(datasets).issubset({"ct_rate", "merlin", "inspect"}), (
-            "When include_reports is True, only 'ct_rate' and 'merlin' datasets are allowed.")
+            "When include_reports is True, only 'ct_rate', 'merlin', and 'inspect' datasets are allowed.")
     if include_labels:
         assert set(datasets).issubset({"abdomen_atlas", "abdomenct_1k"}), (
             "When include_labels is True, only 'abdomen_atlas' and 'abdomenct_1k' datasets are allowed.")
