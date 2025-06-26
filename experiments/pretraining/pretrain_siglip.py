@@ -333,7 +333,7 @@ def main(cfg, accelerator: Accelerator):
                 print(f"Image embeddings: {image_embeddings}")
                 print(f"Text embeddings: {text_embeddings}")
 
-                loss, details = criterion(image_embeddings, text_embeddings, return_details=True)
+                loss = criterion(image_embeddings, text_embeddings)
 
                 # Backward pass
                 accelerator.backward(loss)
@@ -362,8 +362,8 @@ def main(cfg, accelerator: Accelerator):
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            "pos_loss": details["pos_loss"] / get_global_size(),
-                            "neg_loss": details["neg_loss"] / get_global_size(),
+                            # "pos_loss": details["pos_loss"] / get_global_size(),
+                            # "neg_loss": details["neg_loss"] / get_global_size(),
                             "epoch": epoch,
                             "lr": lr,
                         },
