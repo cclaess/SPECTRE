@@ -26,16 +26,21 @@ class SigLIP(nn.Module):
         image_embed_dim: int = 768,
         text_embed_dim: int = 1536,
         projection_dim: int = 512,
-        is_class_token: bool = False,
-        combine_features: bool = True,
+        backbone_is_class_token: bool = False,
+        backbone_combine_features: bool = True,
+        feature_comb_is_class_token: bool = False,
+        feature_comb_combine_features: bool = True,
     ):
         super().__init__()
-        assert not is_class_token or not combine_features
+        assert not backbone_is_class_token or not backbone_combine_features
+        assert not feature_comb_is_class_token or not feature_comb_combine_features
         self.image_backbone = image_backbone
         self.text_backbone = text_backbone
         self.image_feature_comb = image_feature_comb
-        self.is_class_token = is_class_token
-        self.combine_features = combine_features
+        self.backbone_is_class_token = backbone_is_class_token
+        self.backbone_combine_features = backbone_combine_features
+        self.feature_comb_is_class_token = feature_comb_is_class_token
+        self.feature_comb_combine_features = feature_comb_combine_features
 
         self.image_projection = SigLIPProjectionHead(
             input_dim=image_embed_dim,
@@ -70,11 +75,11 @@ class SigLIP(nn.Module):
 
         # Compute image embeddings
         image_embeddings = self.image_backbone(images)
-        if self.is_class_token:
+        if self.backbone_is_class_token:
             image_embeddings = image_embeddings.view(B, N, -1)  # (batch, crops, embed_dim)
         else:
             image_embeddings = image_embeddings.view(B, N, image_embeddings.shape[1], -1)  # (batch, crops, patches, embed_dim)
-            if self.combine_features:
+            if self.backbone_combine_features:
                 image_embeddings = torch.cat([
                     image_embeddings[:, :, 0, :],  # class token
                     image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
@@ -84,9 +89,17 @@ class SigLIP(nn.Module):
                 image_embeddings = image_embeddings[:, :, 0, :]
 
         if self.image_feature_comb is not None:
-            image_embeddings = self.image_feature_comb(image_embeddings.view(B, N, -1)) # (batch, embed_dim)
+            image_embeddings = self.image_feature_comb(image_embeddings) # (batch, embed_dim)
         else:
-            image_embeddings = image_embeddings.view(B, N, -1).max(dim=1).values
+            image_embeddings = image_embeddings.max(dim=1).values
+        if self.feature_comb_combine_features:
+            image_embeddings = torch.cat([
+                image_embeddings[:, 0, :],  # class token
+                image_embeddings[:, 1:, :].mean(dim=1)  # mean of patch tokens
+            ], dim=1)
+        else:
+            if not self.feature_comb_is_class_token:
+                image_embeddings = image_embeddings[:, 0, :]
         image_embeddings = self.image_projection(image_embeddings) # (batch, embed_dim)
 
         # Compute text embeddings

@@ -121,11 +121,13 @@ def main(cfg, accelerator: Accelerator):
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
     image_feature_comb = models.FeatureVisionTransformer(
-        patch_dim=image_backbone_embed_dim * 2,  # cls token + avg pooling (C. Jose et al. 2024)
-        embed_dim=cfg.model.feature_comb_embed_dim,
         num_patches=36,
+        patch_dim=image_backbone_embed_dim * 2,  # cls token + avg pooling (C. Jose et al. 2024)
+        num_classes=0,
+        global_pool='',
+        embed_dim=cfg.model.feature_comb_embed_dim,
         depth=cfg.model.feature_comb_num_layers,
-        heads=cfg.model.feature_comb_num_heads,
+        num_heads=cfg.model.feature_comb_num_heads,
     )
     
     # Initialize text backbone
@@ -234,11 +236,13 @@ def main(cfg, accelerator: Accelerator):
         image_backbone=image_backbone,
         text_backbone=text_backbone,
         image_feature_comb=image_feature_comb,
-        image_embed_dim=image_feature_comb.embed_dim,
+        image_embed_dim=image_feature_comb.embed_dim * 2,
         text_embed_dim=text_backbone_embed_dim,
         projection_dim=cfg.model.projection_dim,
-        is_class_token=False,  # backbone returns all tokens
-        combine_features=True,  # use cls token + avg pooling (C. Jose et al. 2024)
+        backbone_is_class_token=False,  # backbone returns all tokens
+        backbone_combine_features=True,  # use cls token + avg pooling (C. Jose et al. 2024)
+        feature_comb_is_class_token=False,  # feature combiner returns all tokens
+        feature_comb_combine_features=True,  # use cls token + avg pooling (C. Jose et al. 2024)
     )
 
     # Intialize criterion
