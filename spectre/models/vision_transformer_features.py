@@ -166,7 +166,7 @@ class FeatureVisionTransformer(nn.Module):
         """
         Args:
             num_patches: Number of patches in the input.
-            patch_embed_dim: Dimension of each flattened input patch.
+            patch_dim: Dimension of each flattened input patch.
             num_classes: Number of classes for classification head.
             global_pool: Type of global pooling for final sequence (default: 'token').
             embed_dim: Transformer embedding dimension.
@@ -200,7 +200,6 @@ class FeatureVisionTransformer(nn.Module):
         assert pos_embed in ('', 'none', 'learn')
         use_fc_norm = global_pool in ('avg', 'avgmax', 'max') if fc_norm is None else fc_norm
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
-        embed_norm_layer = embed_norm_layer
         act_layer = act_layer or nn.GELU
 
         self.num_patches = num_patches
