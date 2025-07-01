@@ -114,24 +114,14 @@ def main(cfg, accelerator: Accelerator):
         image_backbone = getattr(models, cfg.model.architecture)(
             pretrained_weights=cfg.model.pretrained_weights,
             num_classes=0,
+            global_pool='',
         )
         image_backbone_embed_dim = image_backbone.embed_dim
-    elif (
-        hasattr(models, cfg.model.architecture)
-        and cfg.model.architecture.startswith("resnet")
-        or cfg.model.architecture.startswith("resnext")
-    ):
-        image_backbone = getattr(models, cfg.model.architecture)(
-            pretrained_weights=cfg.model.pretrained_weights,
-            num_classes=0,
-            norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
-        )
-        image_backbone_embed_dim = image_backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
     image_feature_comb = models.FeatureVisionTransformer(
-        patch_dim=image_backbone_embed_dim,
+        patch_dim=image_backbone_embed_dim * 2,  # cls token + avg pooling (C. Jose et al. 2024)
         embed_dim=cfg.model.feature_comb_embed_dim,
         num_patches=36,
         depth=cfg.model.feature_comb_num_layers,
@@ -247,6 +237,8 @@ def main(cfg, accelerator: Accelerator):
         image_embed_dim=image_feature_comb.embed_dim,
         text_embed_dim=text_backbone_embed_dim,
         projection_dim=cfg.model.projection_dim,
+        is_class_token=False,  # backbone returns all tokens
+        combine_features=True,  # use cls token + avg pooling (C. Jose et al. 2024)
     )
 
     # Intialize criterion

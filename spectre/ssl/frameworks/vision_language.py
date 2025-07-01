@@ -26,14 +26,17 @@ class SigLIP(nn.Module):
         image_embed_dim: int = 768,
         text_embed_dim: int = 1536,
         projection_dim: int = 512,
+        is_class_token: bool = False,
+        combine_features: bool = True,
     ):
         super().__init__()
+        assert not is_class_token or not combine_features
         self.image_backbone = image_backbone
         self.text_backbone = text_backbone
         self.image_feature_comb = image_feature_comb
+        self.is_class_token = is_class_token
+        self.combine_features = combine_features
 
-        # self.image_projection = nn.Linear(image_embed_dim, projection_dim)
-        # self.text_projection = nn.Linear(text_embed_dim, projection_dim)
         self.image_projection = SigLIPProjectionHead(
             input_dim=image_embed_dim,
             output_dim=projection_dim,
@@ -44,15 +47,6 @@ class SigLIP(nn.Module):
             output_dim=projection_dim,
             freeze_last_layer=5,
         )
-
-        # nn.init.trunc_normal_(self.image_projection.weight, std=0.01)
-        # nn.init.trunc_normal_(self.text_projection.weight, std=0.01)
-
-        # # Initialize the bias to zero
-        # if self.image_projection.bias is not None:
-        #     nn.init.zeros_(self.image_projection.bias)
-        # if self.text_projection.bias is not None:
-        #     nn.init.zeros_(self.text_projection.bias)
 
     def forward(
         self,
@@ -76,6 +70,19 @@ class SigLIP(nn.Module):
 
         # Compute image embeddings
         image_embeddings = self.image_backbone(images)
+        if self.is_class_token:
+            image_embeddings = image_embeddings.view(B, N, -1)  # (batch, crops, embed_dim)
+        else:
+            image_embeddings = image_embeddings.view(B, N, image_embeddings.shape[1], -1)  # (batch, crops, patches, embed_dim)
+            if self.combine_features:
+                image_embeddings = torch.cat([
+                    image_embeddings[:, :, 0, :],  # class token
+                    image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
+                ], dim=2)  # (batch, crops, embed_dim)
+                torch.mean
+            else:
+                image_embeddings = image_embeddings[:, :, 0, :]
+
         if self.image_feature_comb is not None:
             image_embeddings = self.image_feature_comb(image_embeddings.view(B, N, -1)) # (batch, embed_dim)
         else:
