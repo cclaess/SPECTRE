@@ -130,10 +130,11 @@ def main(cfg, accelerator: Accelerator):
         depth=cfg.model.feature_comb_num_layers,
         num_heads=cfg.model.feature_comb_num_heads,
     )
-    wandb.watch(
-        image_feature_comb,
-        log="all",
-    )
+    if accelerator.is_main_process:
+        wandb.watch(
+            image_feature_comb,
+            log="all",
+        )
     
     # Initialize text backbone
     # TODO: add support for other text backbones
