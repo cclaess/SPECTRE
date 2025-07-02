@@ -120,6 +120,9 @@ def main(cfg, accelerator: Accelerator):
         image_backbone_embed_dim = image_backbone.embed_dim
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
+    
+    for n, p in image_backbone.named_parameters():
+        p.requires_grad = False  # freeze image backbone
 
     image_feature_comb = models.FeatureVisionTransformer(
         num_patches=36,
@@ -130,12 +133,6 @@ def main(cfg, accelerator: Accelerator):
         depth=cfg.model.feature_comb_num_layers,
         num_heads=cfg.model.feature_comb_num_heads,
     )
-    if accelerator.is_main_process:
-        wandb.watch(
-            image_feature_comb,
-            log="all",
-            log_freq=2500,
-        )
     
     # Initialize text backbone
     # TODO: add support for other text backbones
@@ -285,6 +282,14 @@ def main(cfg, accelerator: Accelerator):
     # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
 
+    # Watch the feature combiner model
+    if accelerator.is_main_process:
+        wandb.watch(
+            (unwrapped_model.image_feature_comb, unwrapped_model.image_projection),
+            log="all",
+            log_freq=1000,
+        )
+
     # Load checkpoint if specified
     if cfg.train.resume_ckp:
         start_epoch = load_state(
@@ -338,18 +343,12 @@ def main(cfg, accelerator: Accelerator):
                 # Backward pass
                 accelerator.backward(loss)
 
-                # Check if any gradient are None
-                if accelerator.is_main_process:
-                    for n, p in model.named_parameters():
-                        if p.requires_grad and p.grad is None:
-                            accelerator.print(f"Warning: {n} has no gradient.")
-
                 # Set gradients of image and text encoders to zero if freezing backbone
-                if epoch < cfg.optim.freeze_backbone_epochs:
-                    for name, param in model.named_parameters():
-                        if "image_backbone" in name or "text_backbone" in name:
-                            if param.requires_grad:
-                                param.grad = None
+                # if epoch < cfg.optim.freeze_backbone_epochs:
+                #     for name, param in model.named_parameters():
+                #         if "image_backbone" in name or "text_backbone" in name:
+                #             if param.requires_grad:
+                #                 param.grad = None
                 
                 unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
                 # unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
