@@ -338,6 +338,12 @@ def main(cfg, accelerator: Accelerator):
                 # Backward pass
                 accelerator.backward(loss)
 
+                # Check if any gradient are None
+                if accelerator.is_main_process:
+                    for n, p in model.named_parameters():
+                        if p.requires_grad and p.grad is None:
+                            accelerator.print(f"Warning: {n} has no gradient.")
+
                 # Set gradients of image and text encoders to zero if freezing backbone
                 if epoch < cfg.optim.freeze_backbone_epochs:
                     for name, param in model.named_parameters():
