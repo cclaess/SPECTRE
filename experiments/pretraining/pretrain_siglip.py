@@ -382,6 +382,9 @@ def main(cfg, accelerator: Accelerator):
                     for n, p in unwrapped_model.image_feature_comb.named_parameters():
                         if p.requires_grad:
                             print(f"[DEBUG] {n}: grad is None? {p.grad is None}")
+                    for n, p in unwrapped_model.image_projection.named_parameters():
+                        if p.requires_grad:
+                            print(f"[DEBUG] {n}: grad is None? {p.grad is None}")
                 
                 # Zero gradients
                 optimizer.zero_grad()
