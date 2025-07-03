@@ -282,19 +282,6 @@ def main(cfg, accelerator: Accelerator):
     # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
 
-    # Watch the feature combiner model
-    if accelerator.is_main_process:
-        wandb.watch(
-            (unwrapped_model.image_feature_comb, unwrapped_model.image_projection),
-            log="all",
-            log_freq=1000,
-        )
-    
-        print("📦 Registered backward hooks:")
-        for n, p in unwrapped_model.named_parameters():
-            if p._backward_hooks:
-                print(f"backward hooks {n}: {p._backward_hooks}")
-
     # Load checkpoint if specified
     if cfg.train.resume_ckp:
         start_epoch = load_state(
@@ -383,13 +370,19 @@ def main(cfg, accelerator: Accelerator):
                         step=global_step,
                     )
                 
-                if accelerator.is_main_process:
-                    for n, p in unwrapped_model.image_feature_comb.named_parameters():
-                        if p.requires_grad:
-                            print(f"[DEBUG] {n}: grad is None? {p.grad is None}")
-                    for n, p in unwrapped_model.image_projection.named_parameters():
-                        if p.requires_grad:
-                            print(f"[DEBUG] {n}: grad is None? {p.grad is None}")
+                # Collect gradients
+                gradients = {}
+                for n, p in model.named_parameters():
+                    if p.requires_grad:
+                        if p.grad is not None:
+                            gradients[n] = p.grad.abs().mean().item()  # mean absolute grad
+                        else:
+                            gradients[n] = float("nan")  # param has no grad this step
+
+                # Log gradients to wandb
+                wandb.log({
+                    f"gradients/{n}": v for n, v in gradients.items()
+                }, step=global_step)
                 
                 # Zero gradients
                 optimizer.zero_grad()
