@@ -327,8 +327,8 @@ def main(cfg, accelerator: Accelerator):
                 )
 
                 # Get outputs fromn all devices
-                image_embeddings = accelerator.gather(image_embeddings)
-                text_embeddings = accelerator.gather(text_embeddings)
+                # image_embeddings = accelerator.gather(image_embeddings)
+                # text_embeddings = accelerator.gather(text_embeddings)
 
                 loss = criterion(image_embeddings, text_embeddings)
 
