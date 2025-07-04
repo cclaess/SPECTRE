@@ -45,9 +45,10 @@ model:
   lora_alpha: 32
   lora_dropout: 0.05
   lora_target_keywords:
-  - query
-  - key
-  - value
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
   projection_dim: 512
   learnable_t: true
   learnable_b: true
