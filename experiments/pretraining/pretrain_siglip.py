@@ -4,7 +4,6 @@ import argparse
 from itertools import chain
 from functools import partial
 
-import wandb
 import torch
 import numpy as np
 import torch.nn as nn
@@ -30,6 +29,7 @@ from spectre.configs import default_config_siglip
 from spectre.utils import (
     setup,
     get_global_size,
+    get_global_rank,
     get_dataloader,
     extended_collate_siglip,
     add_lora_adapters,
@@ -219,23 +219,27 @@ def main(cfg, accelerator: Accelerator):
     text_backbone_embed_dim = text_backbone.config.hidden_size
 
     # Add LoRA adapters to text backbone if specified
-    # if cfg.model.use_lora and cfg.model.lora_r > 0:
-    #     add_lora_adapters(
-    #         text_backbone,
-    #         r=cfg.model.lora_r,
-    #         lora_alpha=cfg.model.lora_alpha,
-    #         lora_dropout=cfg.model.lora_dropout,
-    #         target_keywords=cfg.model.lora_target_keywords,
-    #     )
-    #     for n, p in text_backbone.named_parameters():
-    #         p.requires_grad = ('lora_' in n)
-    #     accelerator.print(
-    #         f"LoRA adapters added to text backbone. Trainable parameters: "
-    #         f"{sum(p.numel() for p in text_backbone.parameters() if p.requires_grad):,d} / "
-    #         f"{sum(p.numel() for p in text_backbone.parameters()):,d}."
-    #     )
-    for n, p in text_backbone.named_parameters():
-        p.requires_grad = False  # freeze text backbone
+    if cfg.model.use_lora and cfg.model.lora_r > 0:
+        add_lora_adapters(
+            text_backbone,
+            r=cfg.model.lora_r,
+            lora_alpha=cfg.model.lora_alpha,
+            lora_dropout=cfg.model.lora_dropout,
+            target_keywords=cfg.model.lora_target_keywords,
+        )
+        for n, p in text_backbone.named_parameters():
+            p.requires_grad = ('lora_' in n)
+        accelerator.print(
+            f"LoRA adapters added to text backbone. Trainable parameters: "
+            f"{sum(p.numel() for p in text_backbone.parameters() if p.requires_grad):,d} / "
+            f"{sum(p.numel() for p in text_backbone.parameters()):,d}."
+        )
+    else:
+        for n, p in text_backbone.named_parameters():
+            p.requires_grad = False  # freeze text backbone
+            accelerator.print(
+                "No LoRA adapters added to text backbone. All parameters are frozen."
+            )
 
     # Initialize the SigLIP model
     model = SigLIP(
@@ -252,24 +256,17 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Intialize criterion
-    # criterion = SigLIPLoss(
-    #     learnable_t=cfg.model.learnable_t,
-    #     learnable_b=cfg.model.learnable_b,
-    #     normalize=cfg.model.normalize,
-    #     init_t=cfg.model.init_t,
-    #     init_b=cfg.model.init_b,
-    # )
-    criterion = CLIPLoss(
+    criterion = SigLIPLoss(
+        learnable_t=cfg.model.learnable_t,
+        learnable_b=cfg.model.learnable_b,
         normalize=cfg.model.normalize,
+        init_t=cfg.model.init_t,
+        init_b=cfg.model.init_b,
     )
 
     # Initialize optimizer
     optimizer = AdamW(
-        chain(
-            model.parameters(),
-            criterion.parameters(),
-        ) if cfg.model.learnable_t or cfg.model.learnable_b else \
-            model.parameters(),
+        chain(model.parameters(), criterion.parameters()),
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
     )
@@ -326,11 +323,22 @@ def main(cfg, accelerator: Accelerator):
                     batch['image'], batch['input_ids'], batch['attention_mask']
                 )
 
-                # Get outputs fromn all devices
-                # image_embeddings = accelerator.gather(image_embeddings)
-                # text_embeddings = accelerator.gather(text_embeddings)
+                # Get outputs from all devices
+                image_embeddings_gathered = accelerator.gather(image_embeddings)
+                text_embeddings_gathered = accelerator.gather(text_embeddings)
 
-                loss = criterion(image_embeddings, text_embeddings)
+                # Replace the embeddings from the current process with the original embeddings
+                # to keep the computation graph intact
+                idx_start = get_global_rank() * cfg.train.batch_size_per_gpu
+                idx_end = (get_global_rank() + 1) * cfg.train.batch_size_per_gpu
+                image_embeddings_gathered[idx_start:idx_end] = image_embeddings
+                text_embeddings_gathered[idx_start:idx_end] = text_embeddings
+
+                loss, details = criterion(
+                    image_embeddings_gathered, 
+                    text_embeddings_gathered,
+                    return_details=True,
+                )
 
                 # Backward pass
                 accelerator.backward(loss)
@@ -342,8 +350,8 @@ def main(cfg, accelerator: Accelerator):
                 #             if param.requires_grad:
                 #                 param.grad = None
                 
-                # unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
-                # unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
+                unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
+                unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
@@ -362,8 +370,8 @@ def main(cfg, accelerator: Accelerator):
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            # "pos_loss": details["pos_loss"] / get_global_size(),
-                            # "neg_loss": details["neg_loss"] / get_global_size(),
+                            "pos_loss": details["pos_loss"] / get_global_size(),
+                            "neg_loss": details["neg_loss"] / get_global_size(),
                             "epoch": epoch,
                             "lr": lr,
                         },

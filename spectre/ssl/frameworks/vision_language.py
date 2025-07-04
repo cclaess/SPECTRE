@@ -44,16 +44,14 @@ class SigLIP(nn.Module):
 
         self.image_projection = SigLIPProjectionHead(
             input_dim=image_embed_dim,
-            # output_dim=projection_dim,
-            output_dim=text_embed_dim,  # use same projection as text
-            freeze_last_layer=0,
+            output_dim=projection_dim,
+            freeze_last_layer=1,
         )
-        # self.text_projection = SigLIPProjectionHead(
-        #     input_dim=text_embed_dim,
-        #     output_dim=projection_dim,
-        #     freeze_last_layer=1,
-        # )
-        self.text_projection = nn.Identity()  # do nothing
+        self.text_projection = SigLIPProjectionHead(
+            input_dim=text_embed_dim,
+            output_dim=projection_dim,
+            freeze_last_layer=1,
+        )
 
     def forward(
         self,
