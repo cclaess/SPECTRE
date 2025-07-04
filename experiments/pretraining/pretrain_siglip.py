@@ -80,12 +80,9 @@ def main(cfg, accelerator: Accelerator):
     # Get dataloader
     collate_fn = partial(
         extended_collate_siglip,
-        tokenizer=XLMRobertaTokenizerFast.from_pretrained(
+        tokenizer=Qwen2TokenizerFast.from_pretrained(
             cfg.model.text_tokenizer,
         ),
-        # tokenizer=Qwen2TokenizerFast.from_pretrained(
-        #     cfg.model.text_tokenizer,
-        # ),
     )
     data_loader = get_dataloader(
         cfg.train.datasets,
@@ -121,8 +118,9 @@ def main(cfg, accelerator: Accelerator):
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
     
-    for n, p in image_backbone.named_parameters():
-        p.requires_grad = False  # freeze image backbone
+    if cfg.optim.freeze_backbone_epochs < 0:  # -1 means fully freeze backbone
+        for n, p in image_backbone.named_parameters():
+            p.requires_grad = False  # freeze image backbone
 
     image_feature_comb = models.FeatureVisionTransformer(
         num_patches=36,
@@ -138,84 +136,49 @@ def main(cfg, accelerator: Accelerator):
     # TODO: add support for other text backbones
     # AutoModel is not yet compatible with newest Pytorch Docker image
     config = {
+        "_attn_implementation_autoset": True,
         "architectures": [
-            "XLMRobertaModel"
+            "Qwen3ForCausalLM"
         ],
-        "attention_probs_dropout_prob": 0.1,
-        "bos_token_id": 0,
-        "classifier_dropout": None,
-        "eos_token_id": 2,
-        "hidden_act": "gelu",
-        "hidden_dropout_prob": 0.1,
+        "attention_bias": False,
+        "attention_dropout": 0.0,
+        "bos_token_id": 151643,
+        "eos_token_id": 151643,
+        "head_dim": 128,
+        "hidden_act": "silu",
         "hidden_size": 1024,
         "initializer_range": 0.02,
-        "intermediate_size": 4096,
-        "layer_norm_eps": 1e-05,
-        "max_position_embeddings": 8194,
-        "model_type": "xlm-roberta",
+        "intermediate_size": 3072,
+        "max_position_embeddings": 32768,
+        "max_window_layers": 28,
+        "model_type": "qwen3",
         "num_attention_heads": 16,
-        "num_hidden_layers": 24,
-        "output_past": True,
-        "pad_token_id": 1,
-        "position_embedding_type": "absolute",
+        "num_hidden_layers": 28,
+        "num_key_value_heads": 8,
+        "rms_norm_eps": 1e-06,
+        "rope_scaling": None,
+        "rope_theta": 1000000,
+        "sliding_window": None,
+        "tie_word_embeddings": True,
         "torch_dtype": "float32",
-        "transformers_version": "4.52.3",
-        "type_vocab_size": 1,
         "use_cache": True,
-        "vocab_size": 250002
+        "use_sliding_window": False,
+        "vocab_size": 151669
     }
-    
-    text_backbone = XLMRobertaModel(XLMRobertaConfig.from_dict(config))
+    text_backbone = Qwen3Model(Qwen3Config.from_dict(config))
 
-    text_pretrained_weights = torch.load(cfg.model.text_encoder_weights, map_location="cpu")
+    # Load pretrained weights for text backbone
+    text_pretrained_weights = {}
+    with safe_open(cfg.model.text_encoder_weights, framework="pt", device="cpu") as f:
+        for key in f.keys():
+            # Skip the keys that are not part of the model
+            if "lm_head" in key or "model.embed_tokens" in key:
+                continue
+            text_pretrained_weights[key] = f.get_tensor(key)
     msg = text_backbone.load_state_dict(
         text_pretrained_weights, strict=True
     )
     accelerator.print(f"Pretrained weights of text encoder loaded with msg: {msg}")
-    # config = {
-    #     "_attn_implementation_autoset": True,
-    #     "architectures": [
-    #         "Qwen3ForCausalLM"
-    #     ],
-    #     "attention_bias": False,
-    #     "attention_dropout": 0.0,
-    #     "bos_token_id": 151643,
-    #     "eos_token_id": 151643,
-    #     "head_dim": 128,
-    #     "hidden_act": "silu",
-    #     "hidden_size": 1024,
-    #     "initializer_range": 0.02,
-    #     "intermediate_size": 3072,
-    #     "max_position_embeddings": 32768,
-    #     "max_window_layers": 28,
-    #     "model_type": "qwen3",
-    #     "num_attention_heads": 16,
-    #     "num_hidden_layers": 28,
-    #     "num_key_value_heads": 8,
-    #     "rms_norm_eps": 1e-06,
-    #     "rope_scaling": None,
-    #     "rope_theta": 1000000,
-    #     "sliding_window": None,
-    #     "tie_word_embeddings": True,
-    #     "torch_dtype": "float32",
-    #     "use_cache": True,
-    #     "use_sliding_window": False,
-    #     "vocab_size": 151669
-    # }
-    # text_backbone = Qwen3Model(Qwen3Config.from_dict(config))
-
-    # # Load pretrained weights for text backbone
-    # text_pretrained_weights = {}
-    # with safe_open(cfg.model.text_encoder_weights, framework="pt", device="cpu") as f:
-    #     for key in f.keys():
-    #         # Skip the keys that are not part of the model
-    #         if "lm_head" in key or "model.embed_tokens" in key:
-    #             continue
-    #         text_pretrained_weights[key] = f.get_tensor(key)
-    # msg = text_backbone.load_state_dict(
-    #     text_pretrained_weights, strict=True
-    # )
-    # accelerator.print(f"Pretrained weights of text encoder loaded with msg: {msg}")
     text_backbone_embed_dim = text_backbone.config.hidden_size
 
     # Add LoRA adapters to text backbone if specified
@@ -343,12 +306,13 @@ def main(cfg, accelerator: Accelerator):
                 # Backward pass
                 accelerator.backward(loss)
 
-                # Set gradients of image and text encoders to zero if freezing backbone
-                # if epoch < cfg.optim.freeze_backbone_epochs:
-                #     for name, param in model.named_parameters():
-                #         if "image_backbone" in name or "text_backbone" in name:
-                #             if param.requires_grad:
-                #                 param.grad = None
+                # Set gradients of backbone to zero if specified
+                # This is useful for freezing the backbone during the initial epochs
+                if 0 < cfg.optim.freeze_backbone_epochs > epoch:
+                    for n, p in model.named_parameters():
+                        if "image_backbone" in n:
+                            if p.requires_grad:
+                                p.grad = None
                 
                 unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
                 unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
@@ -370,8 +334,8 @@ def main(cfg, accelerator: Accelerator):
                     accelerator.log(
                         {
                             "loss": loss.item(),
-                            "pos_loss": details["pos_loss"] / get_global_size(),
-                            "neg_loss": details["neg_loss"] / get_global_size(),
+                            "pos_loss": details["pos_loss"],
+                            "neg_loss": details["neg_loss"],
                             "epoch": epoch,
                             "lr": lr,
                         },
@@ -380,7 +344,7 @@ def main(cfg, accelerator: Accelerator):
                 
                 # Collect gradients
                 gradients = {}
-                for n, p in model.named_parameters():
+                for n, p in chain(model.named_parameters(), criterion.named_parameters()):
                     if p.requires_grad:
                         if p.grad is not None:
                             gradients[n] = p.grad.abs().mean().item()  # mean absolute grad

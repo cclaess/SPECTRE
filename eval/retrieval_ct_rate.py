@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -121,7 +122,6 @@ def main(args):
     label_tuples = build_label_tuples(df)
 
     # map each unique label-tuple to the set of indices having it
-    from collections import defaultdict
     tuple_to_idxs = defaultdict(set)
     for idx, tup in enumerate(label_tuples):
         tuple_to_idxs[tup].add(idx)

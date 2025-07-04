@@ -28,10 +28,6 @@ def get_args_parser():
         "--image_size", type=int, nargs="+", default=(384, 384, 256), 
         help="Original image size (default: 384 384 256)",
     )
-    parser.add_argument(
-        "--output_plot", type=str, default=None, 
-        help="Path to save the plot (optional)",
-    )
     return parser
 
 
@@ -125,6 +121,11 @@ def main(args):
         )
         combined_embeds = zoom(combined_embeds, zoom_factors, order=1)
 
+        # Reorder from RAS for visualization
+        combined_embed = np.transpose(combined_embeds, (1, 0, 2, 3))
+        combined_embeds = np.flip(combined_embed, axis=0)
+        combined_embeds = np.flip(combined_embeds, axis=1)
+
         # Create gif frames per-slice
         frames = []
         for i in range(combined_embeds.shape[2]):
@@ -139,5 +140,7 @@ def main(args):
 if __name__ == "__main__":
     
     parser = get_args_parser()
-    args = parser.parse_args()
+    args = parser.parse_args([
+        "--embedding_dir", r"E:\spectre\results\eval\embeddings_ct_rate\vit-b dino",
+    ])
     main(args)

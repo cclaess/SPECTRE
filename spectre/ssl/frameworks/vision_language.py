@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 
 from spectre.ssl.heads import SigLIPProjectionHead
+from spectre.utils import last_token_pool
 
 
 class SigLIP(nn.Module):
@@ -104,6 +105,8 @@ class SigLIP(nn.Module):
 
         # Compute text embeddings
         text_embeddings = self.text_backbone(input_ids=text_tokens, attention_mask=attention_mask)
-        text_embeddings = self.text_projection(text_embeddings.pooler_output) # (batch, embed_dim)
+        text_embeddings = self.text_projection(
+            last_token_pool(text_embeddings.last_hidden_state, attention_mask)
+        ) # (batch, embed_dim)
 
         return image_embeddings, text_embeddings
