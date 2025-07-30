@@ -6,29 +6,22 @@ from functools import partial
 
 import torch
 import numpy as np
-import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
 from safetensors import safe_open
 from transformers import (
-    XLMRobertaModel, 
-    XLMRobertaTokenizerFast, 
-    XLMRobertaConfig,
     Qwen2TokenizerFast,
-)
-from transformers.models.qwen3.modeling_qwen3 import (
     Qwen3Model,
     Qwen3Config,
 )
 
 import spectre.models as models
 from spectre.ssl.frameworks import SigLIP
-from spectre.ssl.losses import SigLIPLoss, CLIPLoss
+from spectre.ssl.losses import SigLIPLoss
 from spectre.ssl.transforms import SigLIPTransform
 from spectre.configs import default_config_siglip
 from spectre.utils import (
     setup,
-    get_global_size,
     get_global_rank,
     get_dataloader,
     extended_collate_siglip,

@@ -3,7 +3,6 @@ from pathlib import Path
 from functools import partial
 
 import torch
-import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 from monai.data import DataLoader
@@ -17,14 +16,15 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
 )
 from transformers import (
-    XLMRobertaTokenizerFast, 
-    XLMRobertaModel, 
-    XLMRobertaConfig,
+    Qwen2TokenizerFast, 
+    Qwen3Model, 
+    Qwen3Config,
 )
 
 import spectre.models as models
 from spectre.data import CTRateDataset
-from spectre.utils.collate import extended_collate_siglip
+from spectre.ssl.heads import SigLIPProjectionHead
+from spectre.utils import extended_collate_siglip, add_lora_adapters, last_token_pool
 from spectre.transforms import SWSpatialCropSamplesd, GenerateReportTransform
 
 
@@ -39,10 +39,6 @@ def get_args_parser():
     parser.add_argument(
         "--save_dir", type=str, default="embeddings", 
         help="Directory to save embeddings",
-    )
-    parser.add_argument(
-        "--image_backbone_weights", type=str, required=True, 
-        help="Path to the image backbone weights",
     )
 
     parser.add_argument(
@@ -62,14 +58,34 @@ def get_args_parser():
         help="Number of attention heads in the image feature combiner",
     )
     parser.add_argument(
-        "--projection_dim", type=int, default=4096, 
+        "--projection_dim", type=int, default=512, 
         help="Dimension of the projection layer for image features",
     )
     parser.add_argument(
-        "--text_tokenizer", type=str, default="BAAI/bge-m3", 
+        "--text_tokenizer", type=str, default="Qwen/Qwen3-Embedding-0.6B", 
         help="Tokenizer for text backbone",
     )
-
+    parser.add_argument(
+        "--use_lora", type=bool, default=True,
+        help="Use LoRA adapters for the text backbone",
+    )
+    parser.add_argument(
+        "--lora_r", type=int, default=32,
+        help="Rank for LoRA adapters",
+    )
+    parser.add_argument(
+        "--lora_alpha", type=float, default=64.0,
+        help="Alpha for LoRA adapters",
+    )
+    parser.add_argument(
+        "--lora_target_keywords", type=str, nargs="+", 
+        default=["q_proj", "k_proj", "v_proj", "o_proj"],
+        help="Target keywords for LoRA adapters",
+    )
+    parser.add_argument(
+        "--image_backbone_weights", type=str, default=None, 
+        help="Path to the image backbone weights",
+    )
     parser.add_argument(
         "--image_feature_comb_weights", type=str, default=None, 
         help="Path to the image feature combiner weights",
@@ -99,12 +115,20 @@ def get_args_parser():
 
 
 def main(args):
-    # Set some presets based on the input arguments
+    # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    do_image_feature_comb = args.image_feature_comb_weights is not None
+
+    # Check if the required weights are provided
+    do_image_backbone = args.image_backbone_weights is not None
+    do_image_feature_comb = do_image_backbone and args.image_feature_comb_weights is not None
     do_image_projection = do_image_feature_comb and args.image_projection_weights is not None
     do_text_backbone = args.text_backbone_weights is not None
     do_text_projection = do_text_backbone and args.text_projection_weights is not None
+
+    if not (do_image_backbone or do_text_backbone):
+        raise ValueError("At least one backbone (image or text) must be specified.")
+    
+    # Create save directory
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -148,7 +172,7 @@ def main(args):
         num_workers=args.num_workers,
         collate_fn=partial(
             extended_collate_siglip, 
-            tokenizer=XLMRobertaTokenizerFast.from_pretrained(
+            tokenizer=Qwen2TokenizerFast.from_pretrained(
                 args.text_tokenizer,
             ) if do_text_backbone else None,
             tokenizer_max_length=4096,
@@ -156,109 +180,122 @@ def main(args):
     )
 
     # Load the image backbone model
-    if (
-        hasattr(models, args.architecture) 
-        and args.architecture.startswith("vit")
-    ):
-        image_backbone = getattr(models, args.architecture)(
-            pretrained_weights=args.image_backbone_weights,
-            num_classes=0,
-            global_pool="",  # Return all tokens
-        )
-        image_backbone_embed_dim = image_backbone.embed_dim
-    else:
-        raise NotImplementedError(f"Model {args.architecture} not implemented.")
-    image_backbone.to(device).eval()
-    
-    # Load the image feature combiner if specified
-    if do_image_feature_comb:
-        image_feature_comb = models.FeatureVisionTransformer(
-            patch_dim=image_backbone_embed_dim,
-            embed_dim=args.feature_comb_embed_dim,
-            num_patches=36,
-            depth=args.feature_comb_num_layers,
-            heads=args.feature_comb_num_heads,
-        )
-
-        image_feature_comb.load_state_dict(
-            torch.load(
-                args.image_feature_comb_weights, 
-                map_location="cpu", 
-                weights_only=False
-            ),
-            strict=True,
-        )
-        image_feature_comb.to(device).eval()
-
-        # Load the image projection model if specified
-        if do_image_projection:
-            image_projection = nn.Linear(
-                in_features=image_feature_comb.embed_dim,
-                out_features=args.projection_dim,
+    if do_image_backbone:
+        if (
+            hasattr(models, args.architecture) 
+            and args.architecture.startswith("vit")
+        ):
+            image_backbone = getattr(models, args.architecture)(
+                pretrained_weights=args.image_backbone_weights,
+                num_classes=0,
+                global_pool='',  # Return all tokens
             )
-            image_projection.load_state_dict(
+            image_backbone_embed_dim = image_backbone.embed_dim
+        else:
+            raise NotImplementedError(f"Model {args.architecture} not implemented.")
+        image_backbone.to(device).eval()
+    
+        # Load the image feature combiner if specified
+        if do_image_feature_comb:
+            image_feature_comb = models.FeatureVisionTransformer(
+                num_patches=36,
+                patch_dim=image_backbone_embed_dim * 2,   # cls token + avg pooling (C. Jose et al. 2024)
+                num_classes=0,
+                global_pool='',
+                embed_dim=args.feature_comb_embed_dim,
+                depth=args.feature_comb_num_layers,
+                num_heads=args.feature_comb_num_heads,
+            )
+
+            image_feature_comb.load_state_dict(
                 torch.load(
-                    args.image_projection_weights, 
+                    args.image_feature_comb_weights, 
                     map_location="cpu", 
-                    weights_only=False
+                    weights_only=False,
                 ),
                 strict=True,
             )
-            image_projection.to(device).eval()
+            image_feature_comb.to(device).eval()
+
+            # Load the image projection model if specified
+            if do_image_projection:
+                image_projection = SigLIPProjectionHead(
+                    input_dim=image_feature_comb.embed_dim * 2,  # cls token + avg pooling
+                    output_dim=args.projection_dim,
+                )
+                image_projection.load_state_dict(
+                    torch.load(
+                        args.image_projection_weights, 
+                        map_location="cpu", 
+                        weights_only=False,
+                    ),
+                    strict=True,
+                )
+                image_projection.to(device).eval()
     
     # Load the text backbone model if specified
     if do_text_backbone:
         config = {
+            "_attn_implementation_autoset": True,
             "architectures": [
-                "XLMRobertaModel"
+                "Qwen3ForCausalLM"
             ],
-            "attention_probs_dropout_prob": 0.1,
-            "bos_token_id": 0,
-            "classifier_dropout": None,
-            "eos_token_id": 2,
-            "hidden_act": "gelu",
-            "hidden_dropout_prob": 0.1,
+            "attention_bias": False,
+            "attention_dropout": 0.0,
+            "bos_token_id": 151643,
+            "eos_token_id": 151643,
+            "head_dim": 128,
+            "hidden_act": "silu",
             "hidden_size": 1024,
             "initializer_range": 0.02,
-            "intermediate_size": 4096,
-            "layer_norm_eps": 1e-05,
-            "max_position_embeddings": 8194,
-            "model_type": "xlm-roberta",
+            "intermediate_size": 3072,
+            "max_position_embeddings": 32768,
+            "max_window_layers": 28,
+            "model_type": "qwen3",
             "num_attention_heads": 16,
-            "num_hidden_layers": 24,
-            "output_past": True,
-            "pad_token_id": 1,
-            "position_embedding_type": "absolute",
+            "num_hidden_layers": 28,
+            "num_key_value_heads": 8,
+            "rms_norm_eps": 1e-06,
+            "rope_scaling": None,
+            "rope_theta": 1000000,
+            "sliding_window": None,
+            "tie_word_embeddings": True,
             "torch_dtype": "float32",
-            "transformers_version": "4.52.3",
-            "type_vocab_size": 1,
             "use_cache": True,
-            "vocab_size": 250002
+            "use_sliding_window": False,
+            "vocab_size": 151669
         }
-        
-        text_backbone = XLMRobertaModel(XLMRobertaConfig.from_dict(config))
+        text_backbone = Qwen3Model(Qwen3Config.from_dict(config))
+
+        if args.use_lora and args.lora_r > 0:
+            add_lora_adapters(
+                text_backbone,
+                r=args.lora_r,
+                lora_alpha=args.lora_alpha,
+                target_keywords=args.lora_target_keywords,
+            )
 
         text_backbone.load_state_dict(
             torch.load(
                 args.text_backbone_weights, 
                 map_location="cpu", 
-                weights_only=False
+                weights_only=False,
             ),
-            strict=False,
+            strict=True,
         )
         text_backbone.to(device).eval()
 
         # Load the text projection model if specified
         if do_text_projection:
-            text_projection = nn.Linear(
-                in_features=text_backbone.config.hidden_size,
-                out_features=args.projection_dim,
+            text_projection = SigLIPProjectionHead(
+                input_dim=text_backbone.config.hidden_size,
+                output_dim=args.projection_dim,
             )
             text_projection.load_state_dict(
                 torch.load(
                     args.text_projection_weights, 
                     map_location="cpu", 
-                    weights_only=False
+                    weights_only=False,
                 ),
                 strict=True,
             )
@@ -269,42 +306,66 @@ def main(args):
         # Move batch to device if is a tensor
         batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-        B, N, C, H, W, D = batch["image"].shape
-        images = batch["image"].view(B*N, C, H, W, D)  # Reshape to (B*N, C, H, W, D)
-
         filenames = [Path(f).name.split(".")[0] for f in batch["filename"]]
         save_paths = [save_dir / filename for filename in filenames]
 
-        with torch.no_grad():
-            image_embeddings = image_backbone(images)
-            save_embeddings(
-                image_embeddings[:, 0].view(B, N, -1), 
-                [p / "image_backbone.npy" for p in save_paths]
-            )  # Save the CLS token embeddings of shape ()
-            save_embeddings(
-                image_embeddings[:, 1:].view(B, N, image_embeddings.shape[1] - 1, -1),
-                [p / "image_backbone_full.npy" for p in save_paths]
-            )
 
-            if do_image_feature_comb:
-                image_embeddings = image_feature_comb(image_embeddings[:, 0].view(B, N, -1))
-                save_embeddings(
-                    image_embeddings, 
-                    [p / "image_feature_comb.npy" for p in save_paths]
+        with torch.no_grad():
+            if do_image_backbone:
+                # Save the images as numpy arrays
+                save_images(
+                    batch["image"], 
+                    [p / "image.npy" for p in save_paths]
                 )
 
-                if do_image_projection:
-                    image_embeddings = image_projection(image_embeddings)
+                B, N, C, H, W, D = batch["image"].shape
+                images = batch["image"].view(B*N, C, H, W, D)  # Reshape to (B*N, C, H, W, D)
+
+                image_embeddings = image_backbone(images)
+                save_embeddings(
+                    image_embeddings[:, 0].view(B, N, -1), 
+                    [p / "image_backbone_cls.npy" for p in save_paths]
+                )  # Save the CLS token embeddings of shape ()
+                save_embeddings(
+                    image_embeddings[:, 1:].view(B, N, image_embeddings.shape[1] - 1, -1),
+                    [p / "image_backbone_patch.npy" for p in save_paths]
+                )
+
+                if do_image_feature_comb:
+                    image_embeddings = image_embeddings.view(B, N, image_embeddings.shape[1], -1)  # (batch, crops, patches, embed_dim)
+                    image_embeddings = torch.cat([
+                        image_embeddings[:, :, 0, :],  # class token
+                        image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
+                    ], dim=2)  # (batch, crops, embed_dim)
+                    image_embeddings = image_feature_comb(image_embeddings)
                     save_embeddings(
-                        image_embeddings, 
-                        [p / "image_projection.npy" for p in save_paths]
+                        image_embeddings[:, 0, :], 
+                        [p / "image_feature_comb_cls.npy" for p in save_paths]
                     )
-            
+                    save_embeddings(
+                        image_embeddings[:, 1:, :], 
+                        [p / "image_feature_comb_patch.npy" for p in save_paths]
+                    )
+
+                    if do_image_projection:
+                        image_embeddings = torch.cat([
+                            image_embeddings[:, 0, :],  # class token
+                            image_embeddings[:, 1:, :].mean(dim=1)  # mean of patch tokens
+                        ], dim=1)
+                        image_embeddings = image_projection(image_embeddings)
+                        save_embeddings(
+                            image_embeddings, 
+                            [p / "image_projection.npy" for p in save_paths]
+                        )
+                
             if do_text_backbone:
                 text_embeddings = text_backbone(
                     input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"]
-                ).pooler_output
+                )
+                text_embeddings = last_token_pool(
+                    text_embeddings.last_hidden_state, batch["attention_mask"]
+                )
                 save_embeddings(
                     text_embeddings, 
                     [p / "text_backbone.npy" for p in save_paths]
@@ -339,6 +400,30 @@ def save_embeddings(embeddings, save_paths):
             save_path = save_path.with_suffix(".npy")
         
         np.save(save_path, emb.cpu().numpy())
+
+
+def save_images(images, save_paths):
+    """
+    Save images to a file.
+    """
+    if isinstance(images, torch.Tensor):
+        images = torch.split(images, 1, dim=0)
+        images = [img.squeeze(0) for img in images if img.numel() > 0]
+    elif isinstance(images, list):
+        images = [img for img in images if isinstance(img, torch.Tensor) and img.numel() > 0]
+    else:
+        raise ValueError("Images must be a tensor or a list of tensors.")
+    
+    assert len(images) > 0, "No valid images to save."
+    assert len(images) == len(save_paths), "Number of images and save paths must match."
+
+    for img, save_path in zip(images, save_paths):
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        if not save_path.suffix:
+            save_path = save_path.with_suffix(".npy")
+        
+        np.save(save_path, img.cpu().numpy())
 
 
 if __name__ == "__main__":

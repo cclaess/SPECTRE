@@ -38,7 +38,7 @@ def load_embeddings(df, emb_dir: Path, key: str):
     embs = []
     ids = []
     for fn in df["VolumeName"]:
-        base = Path(fn).stem
+        base = str(fn).replace(".nii.gz", "")
         path = emb_dir / base / f"{key}.npy"
         if not path.exists():
             raise FileNotFoundError(f"{path} not found")
