@@ -121,7 +121,7 @@ class SigLIPLoss(nn.Module):
         else:
             # If not including positive pairs, we treat all pairs as negatives
             pos_mask = torch.zeros(B, B, device=logits.device)
-        neg_mask = ~pos_mask
+        neg_mask = 1.0 - pos_mask
 
         m1 = -torch.ones_like(logits, device=logits.device)
         m1 += 2 * pos_mask  # Add identity matrix to the diagonal
