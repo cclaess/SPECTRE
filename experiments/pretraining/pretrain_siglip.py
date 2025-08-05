@@ -280,14 +280,20 @@ def main(cfg, accelerator: Accelerator):
                     batch['image'], batch['input_ids'], batch['attention_mask']
                 )
 
+                print(f"Forward pass completed on rank {get_global_rank()}.")
+
                 loss, details = criterion(
                     image_embeddings, 
                     text_embeddings,
                     return_details=True,
                 )
 
+                print(f"Loss computed on rank {get_global_rank()}: {loss.item()}.")
+
                 # Backward pass
                 accelerator.backward(loss)
+
+                print(f"Backward pass completed on rank {get_global_rank()}.")
 
                 # Set gradients of backbone to zero if specified
                 # This is useful for freezing the backbone during the initial epochs
