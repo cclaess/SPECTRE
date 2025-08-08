@@ -6,3 +6,5 @@ from .abdomen_atlas import AbdomenAtlasDataset, AbdomenAtlasCacheDataset, Abdome
 from .panorama import PanoramaDataset, PanoramaCacheDataset, PanoramaGDSDataset
 from .abdomenct_1k import AbdomenCT1KDataset, AbdomenCT1KCacheDataset, AbdomenCT1KGDSDataset
 from .amos import AmosDataset, AmosCacheDataset, AmosGDSDataset
+from .sinoct import SinoCTDataset, SinoCTCacheDataset, SinoCTGDSDataset
+from .total_segmentator import TotalSegmentatorDataset, TotalSegmentatorCacheDataset, TotalSegmentatorGDSDataset

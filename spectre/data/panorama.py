@@ -1,10 +1,16 @@
 from pathlib import Path
-from typing import Callable
+from typing import Callable, List, Dict
 
 from monai.data import Dataset
 
 from spectre.data.cache_dataset import CacheDataset
 from spectre.data.gds_dataset import GDSDataset
+
+
+def _initialize_dataset(data_dir: str) -> List[Dict[str, str]]:
+    image_paths = Path(data_dir).glob("*.nii.gz")
+    data = [{"image": str(image_path)} for image_path in image_paths]
+    return data
 
 
 class PanoramaDataset(Dataset):
@@ -13,9 +19,7 @@ class PanoramaDataset(Dataset):
         data_dir: str, 
         transform: Callable = None
     ):
-        image_paths = Path(data_dir).glob("*.nii.gz")
-        data = [{"image": str(image_path)} for image_path in image_paths]
-
+        data = _initialize_dataset(data_dir)
         super().__init__(data=data, transform=transform)
 
 
@@ -26,9 +30,7 @@ class PanoramaCacheDataset(CacheDataset):
         cache_dir: str,
         transform: Callable = None
     ):
-        image_paths = Path(data_dir).glob("*.nii.gz")
-        data = [{"image": str(image_path)} for image_path in image_paths]
-
+        data = _initialize_dataset(data_dir)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
 
 
@@ -40,7 +42,5 @@ class PanoramaGDSDataset(GDSDataset):
         device: int,
         transform: Callable = None,
     ):
-        image_paths = Path(data_dir).glob("*.nii.gz")
-        data = [{"image": str(image_path)} for image_path in image_paths]
-
+        data = _initialize_dataset(data_dir)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir, device=device)
