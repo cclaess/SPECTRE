@@ -29,9 +29,9 @@ class SigLIPLoss(nn.Module):
         self.normalize = normalize
 
         # Define learnable parameters for temperature and bias
-        self.t = nn.Parameter(torch.tensor(init_t)) if learnable_t else init_t
-        self.b = nn.Parameter(torch.tensor(init_b)) if learnable_b else init_b
-    
+        self.t = nn.Parameter(torch.tensor(init_t), requires_grad=learnable_t)
+        self.b = nn.Parameter(torch.tensor(init_b), requires_grad=learnable_b)
+
     @staticmethod
     def slice_loglik(logits: torch.Tensor, include_pos: bool) -> torch.Tensor:
         """
@@ -89,7 +89,7 @@ class SigLIPLoss(nn.Module):
         if not dist.is_initialized():
             # fallback to single-GPU
             logits = zimg @ ztxt.t()
-            logits = logits * self.t + self.b
+            logits = logits * torch.exp(self.t) + self.b
 
             pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
 
@@ -118,7 +118,7 @@ class SigLIPLoss(nn.Module):
 
             # now compute this “slice” of the full N×N logits:
             logits = zimg @ ztxt_rot.t()  # (batch_size, batch_size)
-            logits = logits * self.t + self.b
+            logits = logits * torch.exp(self.t) + self.b
 
             if k == rank:
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=True)
