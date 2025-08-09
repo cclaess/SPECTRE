@@ -106,11 +106,11 @@ class SigLIPLoss(nn.Module):
         rank = dist.get_rank()
 
         # accumulators (sum of per-sample losses)
-        pos_sum = torch.tensor(0., device=zimg.device)
-        neg_sum = torch.tensor(0., device=zimg.device)
+        pos_sum = torch.tensor(0., device=zimg.device, dtype=zimg.dtype)
+        neg_sum = torch.tensor(0., device=zimg.device, dtype=zimg.dtype)
 
         # total number of samples across all ranks
-        B = torch.tensor(zimg.size(0), device=zimg.device)
+        B = torch.tensor(zimg.size(0), device=zimg.device, dtype=zimg.dtype)
         dist.all_reduce(B, op=dist.ReduceOp.SUM)
 
         for k in range(world_size):
