@@ -134,8 +134,11 @@ class SigLIPLoss(nn.Module):
                 # for all other slices, we only compute the negative log likelihood
                 # since the positive pairs are already included in the first slice
                 pos_ll, neg_ll = self.slice_loglik(logits, include_pos=False)
+                neg_ll = neg_ll / B  # normalize by batch size
                 neg_sum += neg_ll.sum()
 
+        # add across devices to get the mean
+        # we already divided by batch size before
         dist.all_reduce(pos_sum, op=dist.ReduceOp.SUM)
         dist.all_reduce(neg_sum, op=dist.ReduceOp.SUM)
 
