@@ -95,21 +95,24 @@ def extended_collate_siglip(
     Returns:
         A dictionary with collated images and tokenized text.
     """
-    images = []
-    reports = []
-    filenames = []
+    # images = []
+    # reports = []
+    # filenames = []
 
-    for sample in samples_list:
-        filenames.append(sample[0]["image"].data.meta["filename_or_obj"])
-        images.append(torch.stack([s["image"] for s in sample], dim=0))
-        reports.append(sample[0]["report"])
+    # for sample in samples_list:
+    #     filenames.append(sample[0]["image"].data.meta["filename_or_obj"])
+    #     images.append(torch.stack([s["image"] for s in sample], dim=0))
+    #     reports.append(sample[0]["report"])
 
-    collated_data = dict()
-    collated_data["filename"] = filenames
-    collated_data["image"] = torch.stack(images, dim=0)
-    collated_data["report"] = reports
+    # collated_data = dict()
+    # collated_data["filename"] = filenames
+    # collated_data["image"] = torch.stack(images, dim=0)
+    # collated_data["report"] = reports
+    collated_data = list_data_collate(samples_list)
+    if "image" in collated_data.keys():
+        collated_data["filename"] = [s["image"].data.meta["filename_or_obj"] for s in samples_list]
 
-    if tokenizer is not None:
+    if tokenizer is not None and "report" in collated_data.keys():
         tokenizer_output = tokenizer.batch_encode_plus(
             collated_data["report"], 
             add_special_tokens=True,

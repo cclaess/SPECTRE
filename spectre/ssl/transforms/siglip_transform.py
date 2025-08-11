@@ -11,6 +11,7 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
     CastToTyped,
     RandSpatialCropd,
+    RandGridPatchd,
 )
 
 from spectre.transforms import SWSpatialCropSamplesd, GenerateReportTransform
@@ -24,9 +25,9 @@ class SigLIPTransform(Compose):
     ):
         assert dtype in ["float16", "float32"], "dtype must be either 'float16' or 'float32'"
         global_size = (
-            384 + input_size[0],
-            384 + input_size[1],
-            256 + input_size[2],
+            384 + input_size[0] - 2,  # Avoid fitting a full patch by subtracting 2
+            384 + input_size[1] - 2,
+            256 + input_size[2] - 2,
         )
         super().__init__(
             [
@@ -46,16 +47,23 @@ class SigLIPTransform(Compose):
                 CastToTyped(keys=("image",), dtype=getattr(torch, dtype)),
                 
                 # Crop the volume into equal non-overlapping samples
-                RandSpatialCropd(
-                    keys=("image",),
-                    roi_size=(384, 384, 256),
-                    random_size=False,
-                    random_center=True,
-                ),
-                SWSpatialCropSamplesd(
+                # RandSpatialCropd(
+                #     keys=("image",),
+                #     roi_size=(384, 384, 256),
+                #     random_size=False,
+                #     random_center=True,
+                # ),
+                # SWSpatialCropSamplesd(
+                #     keys=("image",),
+                #     patch_size=input_size,
+                #     overlap=0.0,
+                # ),
+                RandGridPatchd(
                     keys=("image",),
                     patch_size=input_size,
-                    overlap=0.0,
+                    min_offset=(0, 0, 0),
+                    max_offset=tuple(sz - 2 for sz in input_size),  # Also subtract 2 here
+                    num_patches=36,
                 ),
 
                 # load the text data
