@@ -25,9 +25,9 @@ class SigLIPTransform(Compose):
     ):
         assert dtype in ["float16", "float32"], "dtype must be either 'float16' or 'float32'"
         global_size = (
-            384 + input_size[0] - 2,  # Avoid fitting a full patch by subtracting 2
-            384 + input_size[1] - 2,
-            256 + input_size[2] - 2,
+            384 + input_size[0],
+            384 + input_size[1],
+            256 + input_size[2],
         )
         super().__init__(
             [
@@ -61,8 +61,8 @@ class SigLIPTransform(Compose):
                 RandGridPatchd(
                     keys=("image",),
                     patch_size=input_size,
-                    min_offset=(0, 0, 0),
-                    max_offset=tuple(sz - 2 for sz in input_size),  # Also subtract 2 here
+                    min_offset=(1, 1, 1),  # Avoid fitting an extra patch
+                    max_offset=tuple(sz for sz in input_size),
                     num_patches=36,
                 ),
 
