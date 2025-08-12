@@ -235,6 +235,8 @@ def main(cfg, accelerator: Accelerator):
 
                 # Forward pass
                 output = model(batch["image"])
+                print(output[0].shape)
+                print(output[1].shape)
                 loss = criterion(output, batch["label"])
 
                 # Backward pass
