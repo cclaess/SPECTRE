@@ -425,7 +425,7 @@ class Mask2FormerHungarianMatcher(nn.Module):
             masks_queries_logits (`torch.Tensor`):
                 A tensor of dim `batch_size, num_queries, num_labels` with the classification logits.
             class_queries_logits (`torch.Tensor`):
-                A tensor of dim `batch_size, num_queries, height, width ,depth` with the predicted masks.
+                A tensor of dim `batch_size, num_queries, height, width, depth` with the predicted masks.
             class_labels (`torch.Tensor`):
                 A tensor of dim `num_target_boxes` (where num_target_boxes is the number of ground-truth objects in the
                 target) containing the class labels.
@@ -451,16 +451,13 @@ class Mask2FormerHungarianMatcher(nn.Module):
             # Compute the classification cost. Contrary to the loss, we don't use the NLL, but approximate it in 1 - proba[target class]. The 1 is a constant that doesn't change the matching, it can be omitted.
             cost_class = -pred_probs[:, class_labels[i]]
             target_mask = mask_labels[i].to(pred_mask)
-            print(target_mask.shape, pred_mask.shape)
             target_mask = target_mask[:, None]
             pred_mask = pred_mask[:, None]
-            print(target_mask.shape, pred_mask.shape)
 
             # Sample ground truth and predicted masks
             point_coordinates = torch.rand(1, self.num_points, 3, device=pred_mask.device)
 
             target_coordinates = point_coordinates.repeat(target_mask.shape[0], 1, 1)
-            print(target_coordinates.shape)
             target_mask = sample_point(target_mask, target_coordinates, align_corners=False).squeeze(1)
 
             pred_coordinates = point_coordinates.repeat(pred_mask.shape[0], 1, 1)
@@ -520,10 +517,10 @@ def sample_point(
         add_dim = True
         point_coordinates = point_coordinates.view(B, point_coordinates.size(1), 1, 1, 3)
 
-    # use F.grid_sample to get features for points in `point_coordinates` via trilinear interpolation
+    # use F.grid_sample to get features for points in `point_coordinates` via bilinear interpolation
     point_features = F.grid_sample(
         input_features, 2.0 * point_coordinates - 1.0,
-        mode="trilinear",
+        mode="bilinear",
         **kwargs,
     )
     if add_dim:
