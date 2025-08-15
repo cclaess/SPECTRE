@@ -217,10 +217,10 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Initialize Dice metric
-    # dice = DiceMetric(
-    #     include_background=False,
-    #     num_classes=5,
-    # )
+    dice = DiceMetric(
+        include_background=False,
+        num_classes=len(labels),
+    )
 
     # Prepare model, data, and optimizer for training
     model, train_dataloader, val_dataloader, criterion, optimizer = accelerator.prepare(
@@ -311,51 +311,89 @@ def main(cfg, accelerator: Accelerator):
                 # Update global step
                 global_step += 1
 
-        # # Evaluate model
-        # model.eval()
-        # best_dice: float = 0.0
-        # with torch.no_grad():
-        #     for batch in val_dataloader:
-        #         output = model(batch["image"])
+        # Evaluate model
+        model.eval()
+        best_dice: float = 0.0
+        with torch.no_grad():
+            for batch in val_dataloader:
+                # Forward pass
+                imgs = batch["image"]
+                mask_logits_per_block, class_logits_per_block = model(imgs)
 
-        #         # Gather predictions and labels across all devices
-        #         y_pred = accelerator.gather(output)
-        #         y_true = accelerator.gather(batch["label"])
+                B = imgs.shape[0]
+                targets = [{
+                    "labels": torch.arange(1, len(labels) + 1).to(imgs.device),
+                    "masks": torch.stack([batch[l][i].squeeze(0) for l in labels], dim=0).to(imgs.device),
+                } for i in range(B)]  # remove channel dimension added by transforms
+                targets = to_per_pixel_targets_semantic(targets, ignore_idx=0)
 
-        #         # Upsample predictions to match labels
-        #         y_pred = nn.functional.interpolate(
-        #             y_pred.unsqueeze(1),
-        #             size=batch["label"].shape[2:],
-        #             mode="trilinear",
-        #             align_corners=False,
-        #         ).squeeze(1)
+                for i, (mask_logits, class_logits) in enumerate(
+                    list(zip(mask_logits_per_block, class_logits_per_block))
+                ):
+                    mask_logits = F.interpolate(
+                        mask_logits,
+                        size=imgs.shape[-3:],
+                        mode="trilinear",
+                    )
+                    logits = to_per_pixel_logits_semantic(mask_logits, class_logits)
 
-        #         # Take the argmax to get class predictions
-        #         y_pred = torch.argmax(y_pred, dim=1)
+                    # Take the argmax to get class predictions
+                    y_pred = torch.argmax(logits, dim=1)
 
-        #         # Compute Dice score
-        #         dice(y_pred=y_pred, y=y_true)
+                    # Compute Dice score
+                    dice(y_pred=y_pred, y=targets[i])
 
-        # # Get predictions and labels form all devices
-        # val_dice = dice.aggregate().item()
-        # dice.reset()
+        # Get predictions and labels form all devices
+        val_dice = dice.aggregate().item()
+        dice.reset()
 
-        # accelerator.print(f"Validation Dice: {val_dice:.4f}")
-        # accelerator.log({+
-        #     "val_dice": val_dice,
-        # }, step=global_step - 1)
+        accelerator.print(f"Validation Dice: {val_dice:.4f}")
+        accelerator.log({
+            "val_dice": val_dice,
+        }, step=global_step - 1)
 
-        # if val_dice > best_dice:
-        #     best_dice = val_dice
-        #     if accelerator.is_main_process:
-        #         torch.save(
-        #             unwrapped_model.state_dict(), 
-        #             os.path.join(cfg.train.output_dir, f"best_model.pt")
-        #         )
+        if val_dice > best_dice:
+            best_dice = val_dice
+            if accelerator.is_main_process:
+                torch.save(
+                    unwrapped_model.state_dict(), 
+                    os.path.join(cfg.train.output_dir, f"best_model.pt")
+                )
         accelerator.wait_for_everyone()
 
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
+
+
+def to_per_pixel_logits_semantic(
+    mask_logits: torch.Tensor, class_logits: torch.Tensor
+):
+    return torch.einsum(
+        "bqhwd, bqc -> bchwd",
+        mask_logits.sigmoid(),
+        class_logits.softmax(dim=-1)[..., :-1],
+    )
+
+
+def to_per_pixel_targets_semantic(
+    targets: list[dict],
+    ignore_idx,
+):
+    per_pixel_targets = []
+    for target in targets:
+        per_pixel_target = torch.full(
+            target["masks"].shape[-3:],
+            ignore_idx,
+            dtype=target["labels"].dtype,
+            device=target["labels"].device,
+        )
+
+        for i, mask in enumerate(target["masks"]):
+            per_pixel_target[mask] = target["labels"][i]
+
+        per_pixel_targets.append(per_pixel_target)
+
+    return per_pixel_targets
 
 
 if __name__ == "__main__":
