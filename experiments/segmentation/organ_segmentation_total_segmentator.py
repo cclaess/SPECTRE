@@ -17,6 +17,7 @@ from monai.transforms import (
     Orientationd,
     Spacingd,
     RandSpatialCropSamplesd,
+    SpatialPadd,
     GridPatchd,
 )
 
@@ -81,6 +82,10 @@ def main(cfg, accelerator: Accelerator):
             pixdim=(0.75, 0.75, 1.5),
             mode=["bilinear"] + ["nearest"] * len(labels),
         ),
+        SpatialPadd(
+            keys=["image"] + labels,
+            spatial_size=(128, 128, 64),
+        ),  # will only pad the smaller images
         # CombineLabelsd(
         #     keys=labels,
         #     mask_key="label",
@@ -112,6 +117,10 @@ def main(cfg, accelerator: Accelerator):
             pixdim=(0.75, 0.75, 1.5),
             mode=["bilinear"] + ["nearest"] * len(labels),
         ),
+        SpatialPadd(
+            keys=["image"] + labels,
+            spatial_size=(128, 128, 64),
+        ),  # will only pad the smaller images
         # CombineLabelsd(
         #     keys=labels,
         #     mask_key="label",
