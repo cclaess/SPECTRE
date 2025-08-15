@@ -2,7 +2,6 @@ import os
 import argparse
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from accelerate import Accelerator
 from torch.optim import AdamW
@@ -21,11 +20,10 @@ from monai.transforms import (
     GridPatchd,
 )
 
+import spectre.data as data
 import spectre.models as models
 from spectre.configs import load_config
-from spectre.transforms import CombineLabelsd
 from spectre.losses import MaskClassificationLoss
-from spectre.data import TotalSegmentatorDataset
 from spectre.data.total_segmentator import LABEL_GROUPS
 from spectre.utils import (
     setup,
@@ -127,20 +125,29 @@ def main(cfg, accelerator: Accelerator):
     ])
 
     # Get dataloader
-    train_dataset = TotalSegmentatorDataset(
-        data_dir=cfg.train.data_dir,
-        include_labels=True,
-        label_groups=cfg.train.label_groups,
-        transform=train_transform,
-        subset="train",
-    )
-    val_dataset = TotalSegmentatorDataset(
-        data_dir=cfg.train.data_dir,
-        include_labels=True,
-        label_groups=cfg.train.label_groups,
-        transform=val_transform,
-        subset="val",
-    )
+    data_kwargs = {
+        "data_dir": cfg.train.data_dir,
+        "include_labels": True,
+        "label_groups": cfg.train.label_groups,
+    }
+    if cfg.train.cache_dataset:
+        data_kwargs["cache_dir"] = cfg.train.cache_dir
+    train_dataset = getattr(
+        data, 
+        "TotalSegmentatorDataset" if not cfg.train.cache_dataset \
+            else "TotalSegmentatorCacheDataset")(
+                **data_kwargs,
+                transform=train_transform,
+                subset="train",
+            )
+    val_dataset = getattr(
+        data,
+        "TotalSegmentatorDataset" if not cfg.train.cache_dataset \
+            else "TotalSegmentatorCacheDataset")(
+                **data_kwargs,
+                transform=val_transform,
+                subset="val",
+            )
 
     train_dataloader = DataLoader(
         train_dataset,
