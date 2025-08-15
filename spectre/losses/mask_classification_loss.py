@@ -451,13 +451,16 @@ class Mask2FormerHungarianMatcher(nn.Module):
             # Compute the classification cost. Contrary to the loss, we don't use the NLL, but approximate it in 1 - proba[target class]. The 1 is a constant that doesn't change the matching, it can be omitted.
             cost_class = -pred_probs[:, class_labels[i]]
             target_mask = mask_labels[i].to(pred_mask)
+            print(target_mask.shape, pred_mask.shape)
             target_mask = target_mask[:, None]
             pred_mask = pred_mask[:, None]
+            print(target_mask.shape, pred_mask.shape)
 
             # Sample ground truth and predicted masks
             point_coordinates = torch.rand(1, self.num_points, 3, device=pred_mask.device)
 
             target_coordinates = point_coordinates.repeat(target_mask.shape[0], 1, 1)
+            print(target_coordinates.shape)
             target_mask = sample_point(target_mask, target_coordinates, align_corners=False).squeeze(1)
 
             pred_coordinates = point_coordinates.repeat(pred_mask.shape[0], 1, 1)
