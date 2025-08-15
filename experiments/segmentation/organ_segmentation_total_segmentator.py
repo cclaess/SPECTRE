@@ -250,10 +250,10 @@ def main(cfg, accelerator: Accelerator):
 
                 # Loss calculation
                 B = imgs.shape[0]
-                targets = {
-                    "labels": [torch.arange(1, len(labels) + 1).to(imgs.device) for _ in range(B)],
-                    "masks": [torch.stack([batch[l][i] for l in labels], dim=0).to(imgs.device) for i in range(B)],
-                }
+                targets = [{
+                    "labels": torch.arange(1, len(labels) + 1).to(imgs.device),
+                    "masks": torch.stack([batch[l][i] for l in labels], dim=0).to(imgs.device),
+                } for i in range(B)]
                 losses_all_blocks = {}
                 for i, (mask_logits, class_logits) in enumerate(
                     list(zip(mask_logits_per_block, class_logits_per_block))
