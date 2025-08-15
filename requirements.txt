@@ -3,6 +3,7 @@ wandb
 numpy
 monai
 timm
+scipy
 pandas
 openpyxl
 accelerate

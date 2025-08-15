@@ -3,6 +3,7 @@ import argparse
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from accelerate import Accelerator
 from torch.optim import AdamW
 from monai.data import  DataLoader
@@ -22,6 +23,7 @@ from monai.transforms import (
 import spectre.models as models
 from spectre.configs import load_config
 from spectre.transforms import CombineLabelsd
+from spectre.losses import MaskClassificationLoss
 from spectre.data import TotalSegmentatorDataset
 from spectre.data.total_segmentator import LABEL_GROUPS
 from spectre.utils import cosine_warmup_schedule, setup
@@ -79,13 +81,13 @@ def main(cfg, accelerator: Accelerator):
             pixdim=(0.75, 0.75, 1.5),
             mode=["bilinear"] + ["nearest"] * len(labels),
         ),
-        CombineLabelsd(
-            keys=labels,
-            mask_key="label",
-            labels=list(range(1, len(labels) + 1)),
-        ),
+        # CombineLabelsd(
+        #     keys=labels,
+        #     mask_key="label",
+        #     labels=list(range(1, len(labels) + 1)),
+        # ),
         RandSpatialCropSamplesd(
-            keys=["image", "label"],
+            keys=["image"] + labels,
             roi_size=(128, 128, 64),
             num_samples=12,
             random_size=False,
@@ -110,13 +112,13 @@ def main(cfg, accelerator: Accelerator):
             pixdim=(0.75, 0.75, 1.5),
             mode=["bilinear"] + ["nearest"] * len(labels),
         ),
-        CombineLabelsd(
-            keys=labels,
-            mask_key="label",
-            labels=list(range(1, len(labels) + 1)),
-        ),
+        # CombineLabelsd(
+        #     keys=labels,
+        #     mask_key="label",
+        #     labels=list(range(1, len(labels) + 1)),
+        # ),
         GridPatchd(
-            keys=["image", "label"],
+            keys=["image"] + labels,
             patch_size=(128, 128, 64),
         ),
     ])
@@ -185,7 +187,16 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Initialize criterion
-    criterion = nn.CrossEntropyLoss()
+    criterion = MaskClassificationLoss(
+        num_labels=len(labels),
+        num_points=cfg.model.num_points,
+        oversample_ratio=cfg.model.oversample_ratio,
+        importance_sample_ratio=cfg.model.importance_sample_ratio,
+        mask_coefficient=cfg.model.mask_coefficient,
+        dice_coefficient=cfg.model.dice_coefficient,
+        class_coefficient=cfg.model.class_coefficient,
+        no_object_coefficient=cfg.model.no_object_coefficient,
+    )
 
     # Initialize optimizer
     optimizer = AdamW(
@@ -195,10 +206,10 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Initialize Dice metric
-    dice = DiceMetric(
-        include_background=False,
-        num_classes=5,
-    )
+    # dice = DiceMetric(
+    #     include_background=False,
+    #     num_classes=5,
+    # )
 
     # Prepare model, data, and optimizer for training
     model, train_dataloader, val_dataloader, criterion, optimizer = accelerator.prepare(
@@ -234,13 +245,29 @@ def main(cfg, accelerator: Accelerator):
                     param_group["lr"] = lr
 
                 # Forward pass
-                output = model(batch["image"])
-                print(output[0].shape)
-                print(output[1].shape)
-                loss = criterion(output, batch["label"])
+                imgs = batch["image"]
+                mask_logits_per_block, class_logits_per_block = model(imgs)
+
+                # Loss calculation
+                targets = {
+                    "labels": torch.arange(1, len(labels) + 1).unsqueeze(0).repeat(imgs.shape[0], 1).to(imgs.device),
+                    "masks": torch.stack([batch[label] for label in labels], dim=1).to(imgs.device),
+                }
+                losses_all_blocks = {}
+                for i, (mask_logits, class_logits) in enumerate(
+                    list(zip(mask_logits_per_block, class_logits_per_block))
+                ):
+                    losses = criterion(
+                        masks_queries_logits=mask_logits, 
+                        class_queries_logits=class_logits, 
+                        targets=targets,
+                    )
+                    losses = {f"{k}_block_{i:02}": v for k, v in losses.items()}
+                    losses_all_blocks |= losses
+                final_loss = criterion.loss_total(losses_all_blocks)
 
                 # Backward pass
-                accelerator.backward(loss)
+                accelerator.backward(final_loss)
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
@@ -255,12 +282,12 @@ def main(cfg, accelerator: Accelerator):
                     accelerator.print(
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
-                        f"Loss: {loss.item():8f}, "
+                        f"Loss: {final_loss.item():8f}, "
                         f"LR: {lr}, "
                     )
                     accelerator.log(
                         {
-                            "loss": loss.item(),
+                            "loss": final_loss.item(),
                             "lr": lr,
                         },
                         step=global_step,
@@ -272,47 +299,47 @@ def main(cfg, accelerator: Accelerator):
                 # Update global step
                 global_step += 1
 
-        # Evaluate model
-        model.eval()
-        best_dice: float = 0.0
-        with torch.no_grad():
-            for batch in val_dataloader:
-                output = model(batch["image"])
+        # # Evaluate model
+        # model.eval()
+        # best_dice: float = 0.0
+        # with torch.no_grad():
+        #     for batch in val_dataloader:
+        #         output = model(batch["image"])
 
-                # Gather predictions and labels across all devices
-                y_pred = accelerator.gather(output)
-                y_true = accelerator.gather(batch["label"])
+        #         # Gather predictions and labels across all devices
+        #         y_pred = accelerator.gather(output)
+        #         y_true = accelerator.gather(batch["label"])
 
-                # Upsample predictions to match labels
-                y_pred = nn.functional.interpolate(
-                    y_pred.unsqueeze(1),
-                    size=batch["label"].shape[2:],
-                    mode="trilinear",
-                    align_corners=False,
-                ).squeeze(1)
+        #         # Upsample predictions to match labels
+        #         y_pred = nn.functional.interpolate(
+        #             y_pred.unsqueeze(1),
+        #             size=batch["label"].shape[2:],
+        #             mode="trilinear",
+        #             align_corners=False,
+        #         ).squeeze(1)
 
-                # Take the argmax to get class predictions
-                y_pred = torch.argmax(y_pred, dim=1)
+        #         # Take the argmax to get class predictions
+        #         y_pred = torch.argmax(y_pred, dim=1)
 
-                # Compute Dice score
-                dice(y_pred=y_pred, y=y_true)
+        #         # Compute Dice score
+        #         dice(y_pred=y_pred, y=y_true)
 
-        # Get predictions and labels form all devices
-        val_dice = dice.aggregate().item()
-        dice.reset()
+        # # Get predictions and labels form all devices
+        # val_dice = dice.aggregate().item()
+        # dice.reset()
 
-        accelerator.print(f"Validation Dice: {val_dice:.4f}")
-        accelerator.log({+
-            "val_dice": val_dice,
-        }, step=global_step - 1)
+        # accelerator.print(f"Validation Dice: {val_dice:.4f}")
+        # accelerator.log({+
+        #     "val_dice": val_dice,
+        # }, step=global_step - 1)
 
-        if val_dice > best_dice:
-            best_dice = val_dice
-            if accelerator.is_main_process:
-                torch.save(
-                    unwrapped_model.state_dict(), 
-                    os.path.join(cfg.train.output_dir, f"best_model.pt")
-                )
+        # if val_dice > best_dice:
+        #     best_dice = val_dice
+        #     if accelerator.is_main_process:
+        #         torch.save(
+        #             unwrapped_model.state_dict(), 
+        #             os.path.join(cfg.train.output_dir, f"best_model.pt")
+        #         )
         accelerator.wait_for_everyone()
 
     # Make sure the trackers are finished before exiting
