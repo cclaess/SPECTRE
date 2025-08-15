@@ -132,7 +132,6 @@ class MaskClassificationLoss(nn.Module):
         masks_queries_logits: torch.Tensor,
         mask_labels: list[torch.Tensor],
         indices: tuple[np.array],
-        num_masks: int,
     ) -> dict[str, torch.Tensor]:
         """Compute the losses related to the masks using sigmoid_cross_entropy_loss and dice loss.
 
@@ -143,8 +142,6 @@ class MaskClassificationLoss(nn.Module):
                 List of mask labels of shape `(labels, height, width, depth)`.
             indices (`tuple[np.array])`:
                 The indices computed by the Hungarian matcher.
-            num_masks (`int`):
-                The number of masks, used for normalization.
 
         Returns:
             losses (`dict[str, Tensor]`): A dict of `torch.Tensor` containing two keys:
