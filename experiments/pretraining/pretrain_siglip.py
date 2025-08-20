@@ -97,6 +97,7 @@ def main(cfg, accelerator: Accelerator):
         drop_last=cfg.train.drop_last,
         persistent_workers=cfg.train.persistent_workers,
     )
+    accelerator.print(f"Number of samples in dataloader: {len(data_loader.dataset)}")
 
     # Initialize backbone
     if (
