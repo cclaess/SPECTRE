@@ -1,4 +1,5 @@
 import os
+import random
 from pathlib import Path
 from typing import Callable, List, Dict
 
@@ -17,9 +18,16 @@ def _initialize_dataset(
     data_dir: str,
     include_reports: bool = False,
     subset: str = "train",
+    fraction: float = 1.0,
 ) -> List[Dict[str, str]]:
     
     image_paths = Path(data_dir).glob(os.path.join("merlinabdominalctdataset", "merlin_data", "*.nii.gz"))
+
+    if 0. < fraction < 1.0:
+        n_keep = int(len(list(image_paths)) * fraction)
+        random.seed(42)  # for reproducibility
+        image_paths = random.sample(image_paths, n_keep)
+
     text_path = Path(data_dir) / "merlinabdominalctdataset" / "reports_final_updated.xlsx"
     reports = pd.read_excel(text_path)
     image_paths = [p for p in image_paths if \
@@ -66,9 +74,10 @@ class MerlinDataset(Dataset):
         data_dir: str,
         include_reports: bool = False, 
         transform: Callable = None,
-        subset: str = "train"
+        subset: str = "train",
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, subset)
+        data = _initialize_dataset(data_dir, include_reports, subset, fraction)
         super().__init__(data=data, transform=transform)
 
 
@@ -79,7 +88,8 @@ class MerlinCacheDataset(CacheDataset):
         cache_dir: str,
         include_reports: bool = False, 
         transform: Callable = None,
-        subset: str = "train"
+        subset: str = "train",
+        fraction: float = 1.0,
     ):
         data = _initialize_dataset(data_dir, include_reports, subset)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
@@ -94,6 +104,7 @@ class MerlinGDSDataset(GDSDataset):
         include_reports: bool = False, 
         transform: Callable = None,
         subset: str = "train",
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, subset)
+        data = _initialize_dataset(data_dir, include_reports, subset, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir, device=device)

@@ -1,4 +1,5 @@
 import os
+import random
 from pathlib import Path
 from typing import Callable, List, Dict
 
@@ -15,9 +16,16 @@ def parse_name(image_path):
 def _initialize_dataset(
     data_dir: str,
     include_reports: bool = False,
+    fraction: float = 1.0
 ) -> List[Dict[str, str]]:
     
     image_paths = Path(data_dir).glob(os.path.join('inspect2', "CTPA", "*.nii.gz"))
+
+    if 0. < fraction < 1.0:
+        n_keep = int(len(list(image_paths)) * fraction)
+        random.seed(42)  # for reproducibility
+        image_paths = random.sample(image_paths, n_keep)
+
     if include_reports:
         import pandas as pd
         text_path = os.path.join(Path(data_dir), "inspect2", "Final_Impressions.xlsx")
@@ -44,8 +52,9 @@ class InspectDataset(Dataset):
         data_dir: str,
         include_reports: bool = False, 
         transform: Callable = None,
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports)
+        data = _initialize_dataset(data_dir, include_reports, fraction=fraction)
         super().__init__(data=data, transform=transform)
 
 
@@ -56,8 +65,9 @@ class InspectCacheDataset(CacheDataset):
         cache_dir: str,
         include_reports: bool = False, 
         transform: Callable = None,
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports)
+        data = _initialize_dataset(data_dir, include_reports, fraction=fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
 
 
@@ -69,6 +79,7 @@ class InspectGDSDataset(GDSDataset):
         device: int,
         include_reports: bool = False, 
         transform: Callable = None,
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports)
+        data = _initialize_dataset(data_dir, include_reports, fraction=fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir, device=device)

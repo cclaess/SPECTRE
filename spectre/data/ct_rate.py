@@ -1,4 +1,5 @@
 import os
+import random
 from pathlib import Path
 from typing import Callable, Dict, List
 
@@ -12,9 +13,19 @@ def _initialize_dataset(
     data_dir: str,
     include_reports: bool = False,
     subset: str = "train",
+    fraction: float = 1.0,
 ) -> List[Dict[str, str]]:
     
     image_paths = Path(data_dir).glob(os.path.join('dataset', subset, "*", "*", "*.nii.gz"))
+
+    if 0. < fraction < 1.0:
+        # make fraction on patient level
+        patients = sorted({p.parts[p.parts.index(subset) + 1] for p in image_paths})
+        n_keep = int(len(patients) * fraction)
+        random.seed(42)  # for reproducibility
+        selected_patients = set(random.sample(patients, n_keep))
+        image_paths = [p for p in image_paths if p.parts[p.parts.index(subset) + 1] in selected_patients]
+
     if include_reports:
         import pandas as pd
         text_path = os.path.join(Path(data_dir), 'dataset', "radiology_text_reports", f"{subset}_reports.xlsx" )
@@ -52,9 +63,10 @@ class CTRateDataset(Dataset):
         data_dir: str,
         include_reports: bool = False, 
         transform: Callable = None,
-        subset: str = "train"
+        subset: str = "train",
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, subset)
+        data = _initialize_dataset(data_dir, include_reports, subset, fraction)
         super().__init__(data=data, transform=transform)
 
 
@@ -65,9 +77,10 @@ class CTRateCacheDataset(CacheDataset):
         cache_dir: str,
         include_reports: bool = False, 
         transform: Callable = None,
-        subset: str = "train"
+        subset: str = "train",
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, subset)
+        data = _initialize_dataset(data_dir, include_reports, subset, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
 
 
@@ -80,6 +93,7 @@ class CTRateGDSDataset(GDSDataset):
         include_reports: bool = False, 
         transform: Callable = None,
         subset: str = "train",
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, subset)
+        data = _initialize_dataset(data_dir, include_reports, subset, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir, device=device)

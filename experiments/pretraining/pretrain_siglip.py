@@ -88,6 +88,7 @@ def main(cfg, accelerator: Accelerator):
         transform=SigLIPTransform(
             dtype="float16" if cfg.train.load_fp16 else "float32",
         ),
+        fraction=cfg.train.data_fraction,
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
         pin_memory=cfg.train.pin_memory,

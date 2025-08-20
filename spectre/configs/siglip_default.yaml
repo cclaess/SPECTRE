@@ -6,6 +6,7 @@ train:
   - inspect
   - merlin
   data_dir: /data/
+  data_fraction: 1.0
   output_dir: .
   saveckp_freq: 20
   resume_ckp: true

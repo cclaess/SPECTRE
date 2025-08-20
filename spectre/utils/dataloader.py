@@ -16,6 +16,7 @@ def get_dataloader(
     cache_dir: Optional[str] = None,
     use_gds: bool = False,
     transform: Optional[Callable] = None,
+    fraction: float = 1.0,
     batch_size: int = 64,
     num_workers: int = 4,
     pin_memory: bool = True,
@@ -51,6 +52,7 @@ def get_dataloader(
                 "data_dir": os.path.join(data_dir, "CT-RATE"),
                 "include_reports": include_reports,
                 "transform": transform,
+                "fraction": fraction,
             }
             if cache_dataset:
                 if use_gds:
@@ -76,6 +78,7 @@ def get_dataloader(
                 "data_dir": os.path.join(data_dir, "INSPECT"),
                 "include_reports": include_reports,
                 "transform": transform,
+                "fraction": fraction,
             }
             if cache_dataset:
                 if use_gds:
@@ -102,6 +105,7 @@ def get_dataloader(
                 "data_dir": os.path.join(data_dir, "MERLIN"),
                 "include_reports": include_reports,
                 "transform": transform,
+                "fraction": fraction,
             }
             if cache_dataset:
                 if use_gds:
