@@ -52,7 +52,7 @@ class InspectDataset(Dataset):
         transform: Callable = None,
         fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, fraction=fraction)
+        data = _initialize_dataset(data_dir, include_reports, fraction)
         super().__init__(data=data, transform=transform)
 
 
@@ -65,7 +65,7 @@ class InspectCacheDataset(CacheDataset):
         transform: Callable = None,
         fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, fraction=fraction)
+        data = _initialize_dataset(data_dir, include_reports, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
 
 
@@ -79,5 +79,5 @@ class InspectGDSDataset(GDSDataset):
         transform: Callable = None,
         fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, fraction=fraction)
+        data = _initialize_dataset(data_dir, include_reports, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir, device=device)

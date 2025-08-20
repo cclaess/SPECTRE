@@ -90,7 +90,7 @@ class MerlinCacheDataset(CacheDataset):
         subset: str = "train",
         fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_reports, subset)
+        data = _initialize_dataset(data_dir, include_reports, subset, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
 
 
