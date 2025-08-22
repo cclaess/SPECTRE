@@ -16,6 +16,7 @@ train:
   pin_memory: true
   persistent_workers: true
   drop_last: true
+  use_thread: false
   cache_dataset: true
   cache_dir: /data/cache/monai/
   use_gds: false

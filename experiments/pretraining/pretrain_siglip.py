@@ -97,6 +97,7 @@ def main(cfg, accelerator: Accelerator):
         collate_fn=collate_fn,
         drop_last=cfg.train.drop_last,
         persistent_workers=cfg.train.persistent_workers,
+        use_thread=cfg.train.use_thread,
     )
     accelerator.print(f"Number of samples in dataloader: {len(data_loader.dataset)}")
 
