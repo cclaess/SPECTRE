@@ -95,9 +95,22 @@ def extended_collate_siglip(
     Returns:
         A dictionary with collated images and tokenized text.
     """
-    collated_data = list_data_collate(samples_list)
-    if "image" in collated_data.keys() and hasattr(samples_list[0]["image"].data, "meta"):
-        collated_data["filename"] = [s["image"].data.meta["filename_or_obj"] for s in samples_list]
+    try:
+        collated_data = list_data_collate(samples_list)
+    except KeyError as e:
+        elem = samples_list[0]
+        data = [i for k in samples_list for i in k] if isinstance(elem, list) else samples_list
+        keys = [d.keys() for d in data if isinstance(d, dict)]
+        for k in keys:
+            print(f"Keys in sample: {k}")
+        raise e
+
+    if "image" in collated_data.keys():
+        if (
+            hasattr(samples_list[0]["image"].data, "meta") 
+            and "filename_or_obj" in samples_list[0]["image"].data.meta
+        ):
+            collated_data["filename"] = [s["image"].data.meta["filename_or_obj"] for s in samples_list]
 
     if tokenizer is not None and "report" in collated_data.keys():
         tokenizer_output = tokenizer.batch_encode_plus(
@@ -112,3 +125,31 @@ def extended_collate_siglip(
         collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
 
     return collated_data
+
+
+def extract_patches_non_overlapping(x, patch_size=(128, 128, 64)):
+    """
+    x: (B, C, D, H, W)
+    returns: (B, N, C, patch_d, patch_h, patch_w)
+    where N = (D // patch_d) * (H // patch_h) * (W // patch_w)
+    """
+    B, C, H, W, D = x.shape
+    patch_h, patch_w, patch_d = patch_size
+    assert H % patch_h == 0 and W % patch_w == 0 and D % patch_d == 0, \
+        "Volume must be divisible by patch size for this method."
+    
+    # Reshape into grid
+    x = x.view(
+        B, C,
+        H // patch_h, patch_h,
+        W // patch_w, patch_w,
+        D // patch_d, patch_d,
+    )
+    
+    # Rearrange so patches come together
+    x = x.permute(0, 2, 4, 6, 1, 3, 5, 7)  # (B, H_blocks, W_blocks, D_blocks, C, patch_h, patch_w, patch_d)
+
+    # Merge block indices into one dimension
+    N = (H // patch_h) * (W // patch_w) * (D // patch_d)
+    x = x.contiguous().view(B, N, C, patch_h, patch_w, patch_d)
+    return x

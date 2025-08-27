@@ -25,6 +25,7 @@ from spectre.utils import (
     get_global_rank,
     get_dataloader,
     extended_collate_siglip,
+    extract_patches_non_overlapping,
     add_lora_adapters,
     load_state,
     save_state,
@@ -255,11 +256,8 @@ def main(cfg, accelerator: Accelerator):
             optimizer=optimizer, 
             criterion=criterion,
         )
-    else:
-        start_epoch: int = 0
-    if start_epoch > 0:
-        start_epoch += 1
-        accelerator.print(f"Resuming training from epoch {start_epoch}.")
+        if start_epoch > 0:
+            accelerator.print(f"Resuming training from epoch {start_epoch}.")
 
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
@@ -270,7 +268,7 @@ def main(cfg, accelerator: Accelerator):
     global_step: int = start_epoch * len(data_loader)
     for epoch in range(start_epoch, cfg.optim.epochs):
         model.train()
-        for step, batch in enumerate(data_loader):
+        for batch in data_loader:
 
             with accelerator.accumulate(model):
 
@@ -287,8 +285,11 @@ def main(cfg, accelerator: Accelerator):
                     param_group["lr"] = lr
 
                 # Forward pass
+                image_patches = extract_patches_non_overlapping(
+                    batch['image'], patch_size=(128, 128, 64),
+                )
                 image_embeddings, text_embeddings = model(
-                    batch['image'], batch['input_ids'], batch['attention_mask']
+                    image_patches, batch['input_ids'], batch['attention_mask']
                 )
 
                 loss, details = criterion(
@@ -362,7 +363,7 @@ def main(cfg, accelerator: Accelerator):
         if accelerator.is_main_process:
             save_state(
                 os.path.join(cfg.train.output_dir, "checkpoint.pt"),
-                epoch=epoch,
+                epoch=epoch + 1,
                 model=unwrapped_model,
                 optimizer=optimizer,
                 criterion=criterion,
@@ -373,7 +374,7 @@ def main(cfg, accelerator: Accelerator):
             if (epoch + 1) % cfg.train.saveckp_freq == 0:
                 save_state(
                     os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
-                    epoch=epoch,
+                    epoch=epoch + 1,
                     model=unwrapped_model,
                     optimizer=optimizer,
                     criterion=criterion,

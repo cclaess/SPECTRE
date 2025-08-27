@@ -1,0 +1,35 @@
+train:
+  batch_size_per_gpu: 2
+  grad_accum_steps: 1
+  data_dir: E:\Datasets\Totalsegmentator_dataset_v201
+  label_groups: 
+    - organs
+  output_dir: .
+  saveckp_freq: 20
+  resume_ckp: true
+  seed: 0
+  num_workers: 1
+  pin_memory: true
+  persistent_workers: true
+  drop_last: true
+  cache_dataset: true
+  cache_dir: /data/cache/monai/
+  log_wandb: true
+  log_freq: 1
+optim:
+  epochs: 100
+  base_lr: 0.0001
+  lr: 0.  # will be set after applying scaling rule
+  warmup_epochs: 10
+  min_lr: 1.0e-06
+  clip_grad_norm: 1.0
+  scaling_rule: sqrt_wrt_1024
+  adamw_beta1: 0.9
+  adamw_beta2: 0.999
+model:
+  architecture: vit_base_patch16_128
+  pretrained_weights: null
+  linear_only: false
+  num_queries: 20
+  num_blocks: 4
+  masked_attn_enabled: true

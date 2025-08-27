@@ -11,6 +11,7 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
     EnsureTyped,
     RandGridPatchd,
+    RandSpatialCropd,
     DeleteItemsd,
 )
 
@@ -52,12 +53,17 @@ class SigLIPTransform(Compose):
             Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
             ResizeWithPadOrCropd(keys=("image",), spatial_size=global_size),
             EnsureTyped(keys=("image",), dtype=getattr(torch, dtype), device=device),
-            RandGridPatchd(
+            # RandGridPatchd(
+            #     keys=("image",),
+            #     patch_size=input_size,
+            #     min_offset=(1, 1, 1),  # Avoid fitting an extra patch
+            #     max_offset=tuple(sz for sz in input_size),
+            #     num_patches=36,
+            # ),
+            RandSpatialCropd(
                 keys=("image",),
-                patch_size=input_size,
-                min_offset=(1, 1, 1),  # Avoid fitting an extra patch
-                max_offset=tuple(sz for sz in input_size),
-                num_patches=36,
+                roi_size=(384, 384, 256),
+                random_size=False,
             ),
 
             # load the text data

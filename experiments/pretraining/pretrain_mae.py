@@ -123,11 +123,8 @@ def main(cfg, accelerator: Accelerator):
             optimizer=optimizer, 
             criterion=criterion, 
         )
-    else:
-        start_epoch: int = 0
-    if start_epoch > 0:
-        start_epoch += 1
-        accelerator.print(f"Resuming training from epoch {start_epoch}.")
+        if start_epoch > 0:
+            accelerator.print(f"Resuming training from epoch {start_epoch}.")
     
     # Get number of training steps
     # Dataloader already per GPU so no need to divide by number of processes
@@ -193,7 +190,7 @@ def main(cfg, accelerator: Accelerator):
         if accelerator.is_main_process:
             save_state(
                 os.path.join(cfg.train.output_dir, "checkpoint.pt"),
-                epoch=epoch,
+                epoch=epoch + 1,
                 model=unwrapped_model,
                 optimizer=optimizer,
                 criterion=criterion,
@@ -204,7 +201,7 @@ def main(cfg, accelerator: Accelerator):
             if (epoch + 1) % cfg.train.saveckp_freq == 0:
                 save_state(
                     os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
-                    epoch=epoch,
+                    epoch=epoch + 1,
                     model=unwrapped_model,
                     optimizer=optimizer,
                     criterion=criterion,

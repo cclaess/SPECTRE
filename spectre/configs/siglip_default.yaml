@@ -55,6 +55,6 @@ model:
   projection_dim: 512
   learnable_t: true
   learnable_b: true
-  init_t: 2.3  # ~log(10)
+  init_t: 2.3026  # ~log(10)
   init_b: -10.0
   normalize: true

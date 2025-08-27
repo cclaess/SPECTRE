@@ -1,10 +1,9 @@
 import os
 from typing import Union, Callable, Optional, List
 
+import torch
 import monai.data as data
 from torch.utils.data import ConcatDataset
-
-from spectre.utils.distributed import get_global_rank
 
 
 def get_dataloader(
@@ -24,6 +23,7 @@ def get_dataloader(
     collate_fn: Optional[Callable] = None,
     drop_last: bool = True,
     persistent_workers: bool = True,
+    use_thread: bool = False,
 ) -> data.DataLoader:
     """
     Get dataloader for training.
@@ -41,6 +41,7 @@ def get_dataloader(
             "When include_labels=True, only 'abdomen_atlas' and 'abdomenct_1k' are allowed."
     if use_gds:
         assert cache_dataset, "GDS requires cache_dataset=True."
+        assert torch.cuda.is_available(), "GDS requires CUDA to be available."
 
     # Dataset configurations
     DATASET_CONFIGS = {
@@ -80,18 +81,18 @@ def get_dataloader(
             class_suffix = "GDSDataset" if use_gds else "PersistentDataset"
 
         class_name = f"{base_name}{class_suffix}"
-        DatasetClass = getattr(__import__("spectre.data", from_list=[class_name]), class_name)
+        DatasetClass = getattr(__import__("spectre.data", fromlist=[class_name]), class_name)
 
         if cache_dataset:
             kwargs["cache_dir"] = os.path.join(cache_dir, folder)
             if use_gds:
-                kwargs["device"] = get_global_rank()
+                kwargs["device"] = torch.cuda.current_device()
 
         datasets_list.append(DatasetClass(**kwargs))
 
     dataset = datasets_list[0] if len(datasets_list) == 1 else ConcatDataset(datasets_list)
 
-    loader_cls = getattr(data, "ThreadDataLoader" if use_gds else "DataLoader")
+    loader_cls = getattr(data, "ThreadDataLoader" if use_thread else "DataLoader")
     loader_kwargs = {
         "dataset": dataset,
         "batch_size": batch_size,
@@ -100,12 +101,12 @@ def get_dataloader(
         "drop_last": drop_last,
     }
 
-    if not use_gds:
+    if not use_thread:
         loader_kwargs.update({
             "pin_memory": pin_memory, 
             "persistent_workers": persistent_workers
         })
-    if collate_fn:
+    if collate_fn is not None:
         loader_kwargs["collate_fn"] = collate_fn
 
     return loader_cls(**loader_kwargs)
