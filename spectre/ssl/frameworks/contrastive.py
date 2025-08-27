@@ -12,8 +12,8 @@ import torch.nn as nn
 
 from spectre.models import VisionTransformer
 from spectre.ssl.models import MaskedVisionTransformer
-from spectre.ssl.heads import DINOProjectionHead
-from spectre.utils.models import deactivate_requires_grad
+from spectre.ssl.heads import DINOProjectionHead, DINOv2ProjectionHead
+from spectre.utils import deactivate_requires_grad, update_drop_path_rate
 
 
 class DINO(nn.Module):
@@ -69,81 +69,76 @@ class DINOv2(nn.Module):
         hidden_dim: int = 2048,
         bottleneck_dim: int = 256,
         output_dim: int = 65536,
+        ibot_seperate_head: bool = False,
+        student_drop_path_rate: float = 0.1,
     ):
         super().__init__()
 
         self.student_backbone = MaskedVisionTransformer(vit=backbone)
-        self.student_head_dino = DINOProjectionHead(
-            input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1,
+        update_drop_path_rate(
+            self.student_backbone.vit, 
+            drop_path_rate=student_drop_path_rate
         )
-        self.student_head_ibot = DINOProjectionHead(
-            input_dim, hidden_dim, bottleneck_dim, output_dim, freeze_last_layer=1,
+        self.student_head_dino = DINOv2ProjectionHead(
+            input_dim, hidden_dim, bottleneck_dim, output_dim,
         )
+        if ibot_seperate_head:
+            self.student_head_ibot = DINOv2ProjectionHead(
+                input_dim, hidden_dim, bottleneck_dim, output_dim,
+            )
+        else:
+            self.student_head_ibot = self.student_head_dino
 
-        self.teacher_backbone = deepcopy(backbone)
-        self.teacher_head_dino = DINOProjectionHead(
-            input_dim, hidden_dim, bottleneck_dim, output_dim,
-        )
-        self.teacher_head_ibot = DINOProjectionHead(
-            input_dim, hidden_dim, bottleneck_dim, output_dim,
-        )
+        self.teacher_backbone = deepcopy(self.student_backbone)
         deactivate_requires_grad(self.teacher_backbone)
+        self.teacher_head_dino = DINOv2ProjectionHead(
+            input_dim, hidden_dim, bottleneck_dim, output_dim,
+        )
         deactivate_requires_grad(self.teacher_head_dino)
-        deactivate_requires_grad(self.teacher_head_ibot)
-    
-    def forward(
+        if ibot_seperate_head:
+            self.teacher_head_ibot = DINOv2ProjectionHead(
+                input_dim, hidden_dim, bottleneck_dim, output_dim,
+            )
+            deactivate_requires_grad(self.teacher_head_ibot)
+        else:
+            self.teacher_head_ibot = self.teacher_head_dino
+
+    def forward_student(
         self, 
-        global_crops: torch.Tensor, 
-        local_crops: torch.Tensor,
-        masks: torch.Tensor,
-        mask_indices: list, 
-        upperbound: int,
+        global_views: torch.Tensor, 
+        local_views: torch.Tensor,
+        mask: torch.Tensor,
     ) -> torch.Tensor:
-        x_global = self.student_backbone.encode(global_crops, mask=masks)
-        x_local = self.student_backbone.encode(local_crops)
-
-        cls_tokens_global = x_global[:, 0]
-        patch_tokens_global = x_global[:, 1:]
-        cls_tokens_local = x_local[:, 0]
-
-        buffer_tensor = patch_tokens_global.new_zeros(
-            upperbound, patch_tokens_global.shape[-1])
-        buffer_tensor[:mask_indices.shape[0]].copy_(torch.index_select(
-            patch_tokens_global.flatten(0, 1),
-            dim=0,
-            index=mask_indices,
-        ))
-
-        cls_tokens_global_after_head = self.student_head_dino(cls_tokens_global)
-        patch_tokens_global_after_head = self.student_head_ibot(buffer_tensor)[
-            :mask_indices.shape[0]
-        ]
-        cls_tokens_local_after_head = self.student_head_dino(cls_tokens_local)
         
-        return cls_tokens_global_after_head, patch_tokens_global_after_head, cls_tokens_local_after_head
+        # global views
+        student_features = self.student_backbone.encode(global_views, mask=mask)
+        student_global_cls_token = student_features[:, 0]
+        student_global_masked_features = student_features[mask]
+
+        student_global_cls_out = self.student_head_dino(student_global_cls_token)
+        student_global_masked_out = self.student_head_ibot(student_global_masked_features)
+
+        # local views
+        student_local_cls_token = self.student_backbone.encode(local_views, mask=None)[:, 0]
+        student_local_cls_out = self.student_head_dino(student_local_cls_token)
+
+        student_cls_out = torch.cat([student_global_cls_out, student_local_cls_out], dim=0)
+
+        return student_cls_out, student_global_masked_out
     
     def forward_teacher(
             self, 
-            global_crops: torch.Tensor, 
-            mask_indices: list, 
-            upperbound: int,
+            global_views: torch.Tensor,
+            mask: torch.Tensor,
         ) -> torch.Tensor:
-        x = self.teacher_backbone.forward_features(global_crops)
-        cls_tokens = x[:, 0]
-        patch_tokens = x[:, 1:]
 
-        buffer_tensor = patch_tokens.new_zeros(
-            upperbound, patch_tokens.shape[-1])
-        torch.index_select(
-            patch_tokens.flatten(0, 1),
-            dim=0,
-            index=mask_indices,
-            out=buffer_tensor[:mask_indices.shape[0]],
-        )
+        teacher_features = self.teacher_backbone.encode(global_views, mask=None)
+        teacher_global_cls_token = teacher_features[:, 0]
 
-        cls_tokens_after_head = self.teacher_head_dino(cls_tokens)
-        patch_tokens_after_head = self.teacher_head_ibot(buffer_tensor)[
-            :mask_indices.shape[0]
-        ]
-           
-        return cls_tokens_after_head, patch_tokens_after_head
+        teacher_global_cls_out = self.teacher_head_dino(teacher_global_cls_token)
+        teacher_global_masked_out = self.teacher_head_ibot(teacher_features[mask])
+
+        return teacher_global_cls_out, teacher_global_masked_out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.teacher_backbone(x)

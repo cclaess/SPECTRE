@@ -10,7 +10,6 @@ from monai.transforms import (
     Spacingd,
     ResizeWithPadOrCropd,
     EnsureTyped,
-    RandGridPatchd,
     RandSpatialCropd,
     DeleteItemsd,
 )
@@ -31,12 +30,10 @@ class SigLIPTransform(Compose):
             256 + input_size[2],
         )
 
-        assert dtype in ["float16", "float32"], "dtype must be either 'float16' or 'float32'"
-        if use_gds and torch.cuda.is_available():
-            device = "cuda"
-            _ = torch.cuda.current_device()  # Initialize CUDA
-        else:
-            device = "cpu"
+        assert dtype in ["float16", "float32"], \
+            "dtype must be either 'float16' or 'float32'"
+        
+        device = "cuda" if (use_gds and torch.cuda.is_available()) else "cpu"
 
         super().__init__([
             LoadImaged(keys=("image",)),
@@ -53,13 +50,6 @@ class SigLIPTransform(Compose):
             Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
             ResizeWithPadOrCropd(keys=("image",), spatial_size=global_size),
             EnsureTyped(keys=("image",), dtype=getattr(torch, dtype), device=device),
-            # RandGridPatchd(
-            #     keys=("image",),
-            #     patch_size=input_size,
-            #     min_offset=(1, 1, 1),  # Avoid fitting an extra patch
-            #     max_offset=tuple(sz for sz in input_size),
-            #     num_patches=36,
-            # ),
             RandSpatialCropd(
                 keys=("image",),
                 roi_size=(384, 384, 256),

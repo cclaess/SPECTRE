@@ -22,7 +22,6 @@ from spectre.ssl.transforms import SigLIPTransform
 from spectre.configs import default_config_siglip
 from spectre.utils import (
     setup,
-    get_global_rank,
     get_dataloader,
     extended_collate_siglip,
     extract_patches_non_overlapping,

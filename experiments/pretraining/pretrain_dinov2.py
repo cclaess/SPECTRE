@@ -2,7 +2,6 @@ import os
 import random
 import argparse
 from itertools import chain
-from functools import partial
 
 import numpy as np
 import torch
@@ -14,13 +13,18 @@ from spectre.ssl.frameworks import DINOv2
 from spectre.ssl.losses import DINOLoss, KoLeoLoss, iBOTPatchLoss
 from spectre.ssl.transforms import DINOTransform
 from spectre.configs import default_config_dinov2
-from spectre.utils.config import setup
-from spectre.utils.models import update_momentum
-from spectre.utils.dataloader import get_dataloader
-from spectre.utils.masking import MaskingGenerator
-from spectre.utils.collate import extended_collate_dino
-from spectre.utils.checkpointing import load_state, save_state
-from spectre.utils.scheduler import cosine_schedule, cosine_warmup_schedule
+from spectre.utils import (
+    setup,
+    random_block_mask,
+    update_momentum,
+    get_dataloader,
+    extended_collate_dino,
+    load_state,
+    save_state,
+    cosine_schedule,
+    cosine_warmup_schedule,
+    linear_warmup_schedule,
+)
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -76,16 +80,6 @@ def main(cfg, accelerator: Accelerator):
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
     # Get dataloader
-    collate_fn = partial(
-        extended_collate_dino, 
-        mask_ratio=(cfg.model.mask_ratio_min, cfg.model.mask_ratio_max), 
-        mask_probability=cfg.model.mask_probability, 
-        n_tokens=backbone.patch_embed.num_patches,
-        mask_generator=MaskingGenerator(
-            input_size=backbone.patch_embed.grid_size,
-            max_num_patches=0.5 * backbone.patch_embed.num_patches,
-        )
-    )
     data_loader = get_dataloader(
         cfg.train.datasets,
         cfg.train.data_dir,
@@ -93,16 +87,21 @@ def main(cfg, accelerator: Accelerator):
         include_labels=False,
         cache_dataset=cfg.train.cache_dataset,
         cache_dir=cfg.train.cache_dir,
+        use_gds=cfg.train.use_gds,
         transform=DINOTransform(
+            num_local_views=cfg.train.num_local_views,
             dtype="float16" if cfg.train.load_fp16 else "float32",
+            use_gds=cfg.train.use_gds,
         ),
+        fraction=cfg.train.data_fraction,
         batch_size=cfg.train.batch_size_per_gpu,
         num_workers=cfg.train.num_workers,
         pin_memory=cfg.train.pin_memory,
         shuffle=True,
-        collate_fn=collate_fn,
+        collate_fn=extended_collate_dino,
         drop_last=cfg.train.drop_last,
         persistent_workers=cfg.train.persistent_workers,
+        use_thread=cfg.train.use_thread,
     )
 
     # Initialize DINO model
@@ -112,6 +111,8 @@ def main(cfg, accelerator: Accelerator):
         hidden_dim=cfg.model.hidden_dim,
         bottleneck_dim=cfg.model.bottleneck_dim,
         output_dim=cfg.model.output_dim,
+        ibot_seperate_head=cfg.model.ibot_seperate_head,
+        student_drop_path_rate=cfg.model.student_drop_path_rate,
     )
 
     # Initialize criterion
@@ -123,15 +124,13 @@ def main(cfg, accelerator: Accelerator):
         student_temp=cfg.model.student_temp,
         center_momentum=cfg.model.center_momentum,
     )
-    criterion_koleo = KoLeoLoss()
     criterion_ibot = iBOTPatchLoss(
         output_dim=cfg.model.output_dim,
-        warmup_teacher_temp=cfg.model.warmup_teacher_temp,
         teacher_temp=cfg.model.teacher_temp,
-        warmup_teacher_temp_epochs=cfg.model.warmup_teacher_temp_epochs,
         student_temp=cfg.model.student_temp,
         center_momentum=cfg.model.center_momentum,
     )
+    criterion_koleo = KoLeoLoss()
 
     # Initialize optimizer
     optimizer = AdamW(
@@ -141,10 +140,10 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Prepare model, data, and optimizer for training
-    model, data_loader, criterion_dino, criterion_koleo, criterion_ibot, \
+    model, data_loader, criterion_dino, criterion_ibot, criterion_koleo, \
         optimizer = accelerator.prepare(
-            model, data_loader, criterion_dino, criterion_koleo,
-            criterion_ibot, optimizer,
+            model, data_loader, criterion_dino,
+            criterion_ibot, criterion_koleo, optimizer,
         )
     
     # Keep unwrapped model for easier access to individual components
@@ -167,8 +166,7 @@ def main(cfg, accelerator: Accelerator):
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
     warmup_num_steps = cfg.optim.warmup_epochs * len(data_loader)
-
-    
+    warmup_teacher_temp_num_steps = cfg.optim.warmup_teacher_temp_epochs * len(data_loader)
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
@@ -197,9 +195,10 @@ def main(cfg, accelerator: Accelerator):
                     cfg.model.momentum_teacher,
                     cfg.model.momentum_teacher_end,
                 )
-                update_momentum(unwrapped_model.student_backbone.vit, unwrapped_model.teacher_backbone, momentum)
+                update_momentum(unwrapped_model.student_backbone.vit, unwrapped_model.teacher_backbone.vit, momentum)
                 update_momentum(unwrapped_model.student_head_dino, unwrapped_model.teacher_head_dino, momentum)
-                update_momentum(unwrapped_model.student_head_ibot, unwrapped_model.teacher_head_ibot, momentum)
+                if cfg.model.ibot_seperate_head:
+                    update_momentum(unwrapped_model.student_head_ibot, unwrapped_model.teacher_head_ibot, momentum)
 
                 # Update weight decay
                 weight_decay = cosine_schedule(
@@ -210,44 +209,59 @@ def main(cfg, accelerator: Accelerator):
                 )
                 optimizer.param_groups[0]["weight_decay"] = weight_decay
 
+                global_views = batch["global_views"].as_tensor()
+                local_views = batch["local_views"].as_tensor()
+
+                # Masking
+                B = global_views.shape[0]
+                sequence_length = unwrapped_model.teacher_backbone.vit.patch_embed.sequence_length
+                num_prefix_tokens = unwrapped_model.teacher_backbone.num_prefix_tokens
+                mask = global_views.new_zeros((B, sequence_length), dtype=torch.bool)
+
+                # Mask patches except for the cls token
+                H, W, D = unwrapped_model.teacher_backbone.vit.patch_embed.grid_size
+                assert H * W * D == sequence_length - num_prefix_tokens, \
+                    "Grid size does not match sequence length."
+                block_mask = random_block_mask(size=(B, H, W, D), device=mask.device, seed=cfg.train.seed)
+                mask[:, num_prefix_tokens:] = block_mask.flatten(start_dim=1)
+
                 # Forward pass
-                teacher_cls_tokens_global, teacher_patch_tokens_global = unwrapped_model.forward_teacher(
-                    global_crops=batch["global_crops"].as_tensor(), 
-                    mask_indices=batch["mask_indices"], 
-                    upperbound=batch["upperbound"]
-                )
-                student_cls_tokens_global, student_patch_tokens_global, student_cls_tokens_local = model(
-                    global_crops=batch["global_crops"].as_tensor(), 
-                    local_crops=batch["local_crops"].as_tensor(), 
-                    masks=torch.cat([
-                        torch.zeros(batch["masks"].shape[0], 1, dtype=torch.bool, device=batch["masks"].device), 
-                        batch["masks"]
-                    ], dim=1),  # Add cls token to mask here, not sure where to do this yet ...
-                    mask_indices=batch["mask_indices"], 
-                    upperbound=batch["upperbound"]
+                with torch.no_grad():
+                    teacher_cls_out, teacher_masked_out = unwrapped_model.forward_teacher(
+                        global_views=global_views,
+                        mask=mask,
+                    )
+                student_cls_out, student_masked_out = unwrapped_model.forward_student(
+                    global_views=global_views,
+                    local_views=local_views,
+                    mask=mask,
                 )
 
+                # Calculate the loss
+                teacher_temp = linear_warmup_schedule(
+                    step=global_step,
+                    warmup_steps=warmup_teacher_temp_num_steps,
+                    start_value=cfg.model.warmup_teacher_temp,
+                    end_value=cfg.model.teacher_temp,
+                )
                 dino_loss = criterion_dino(
-                    teacher_cls_tokens_global.chunk(2, dim=0),
-                    student_cls_tokens_global.chunk(2, dim=0) + student_cls_tokens_local.chunk(8, dim=0),
-                    epoch=epoch,
+                    teacher_out=teacher_cls_out.chunk(2, dim=0),
+                    student_out=student_cls_out.chunk(2 + cfg.model.num_local_views, dim=0),
+                    teacher_temp=teacher_temp,
                 )
-
+                ibot_loss = criterion_ibot(
+                    teacher_out=teacher_masked_out,
+                    student_out=student_masked_out,
+                    mask=block_mask,
+                    teacher_temp=teacher_temp,
+                )
                 koleo_loss = sum(
-                    criterion_koleo(p) for p in student_cls_tokens_global.chunk(2, dim=0)
-                )
-
-                ibot_loss = criterion_ibot.forward_masked(
-                    teacher_patch_tokens_global,
-                    student_patch_tokens_global,
-                    mask=batch["masks"],
-                    epoch=epoch,
-                    masks_weight=batch["masks_weight"],
+                    criterion_koleo(p) for p in student_cls_out[:2].chunk(2, dim=0)
                 )
 
                 loss = cfg.model.dino_loss_weight * dino_loss + \
-                    cfg.model.koleo_loss_weight * koleo_loss + \
-                    cfg.model.ibot_loss_weight * ibot_loss
+                    cfg.model.ibot_loss_weight * ibot_loss + \
+                    cfg.model.koleo_loss_weight * koleo_loss
 
                 # Backward pass
                 accelerator.backward(loss)

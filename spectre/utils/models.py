@@ -5,6 +5,9 @@ from typing import List, Tuple, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+
+from spectre.models import VisionTransformer
 
 
 def deactivate_requires_grad(model: nn.Module):
@@ -54,6 +57,49 @@ def update_momentum(model: nn.Module, model_ema: nn.Module, m: float):
     """
     for model_ema, model in zip(model_ema.parameters(), model.parameters()):
         model_ema.data = model_ema.data * m + model.data * (1.0 - m)
+
+
+def update_drop_path_rate(
+    model: VisionTransformer,
+    drop_path_rate: float,
+    mode: str = "linear",
+) -> None:
+    """Updates the drop path rate in a TIMM VisionTransformer model.
+
+    Args:
+        model:
+            TIMM VisionTransformer model.
+        drop_path_rate:
+            Maximum drop path rate.
+        mode:
+            Drop path rate update mode. Can be "linear" or "uniform". Linear increases
+            the drop path rate from 0 to drop_path_rate over the depth of the model.
+            Uniform sets the drop path rate to drop_path_rate for all blocks.
+    Raises:
+        ValueError: If an unknown mode is provided.
+    """
+    from timm.layers import DropPath
+
+    total_depth = len(model.blocks)
+
+    # Determine drop path rates based on the specified mode
+    if mode == "linear":
+        drop_probabilities = np.linspace(0, drop_path_rate, total_depth)
+    elif mode == "uniform":
+        drop_probabilities = [drop_path_rate for _ in range(total_depth)]
+    else:
+        raise ValueError(
+            f"Unknown mode: '{mode}', supported modes are 'linear' and 'uniform'."
+        )
+
+    # Update the drop path rate for each block in the model
+    for block, drop_prob in zip(model.blocks, drop_probabilities):
+        if drop_prob > 0.0:
+            block.drop_path1 = DropPath(drop_prob=drop_prob)
+            block.drop_path2 = DropPath(drop_prob=drop_prob)
+        else:
+            block.drop_path1 = nn.Identity()
+            block.drop_path2 = nn.Identity()
 
 
 def repeat_token(token: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
@@ -433,6 +479,20 @@ def global_pool_nlc(
     return x
 
 
+def last_token_pool(
+    last_hidden_states: torch.Tensor, 
+    attention_mask: torch.Tensor
+) -> torch.Tensor:
+    left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+    if left_padding:
+        return last_hidden_states[:, -1]
+    else:
+        sequence_lengths = attention_mask.sum(dim=1) - 1
+        batch_size = last_hidden_states.shape[0]
+        return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device),
+                                  sequence_lengths]
+
+
 class Format(str, Enum):
     NCHWD = 'NCHWD'
     NHWDC = 'NHWDC'
@@ -458,17 +518,3 @@ def nhwdc_to(x: torch.Tensor, fmt: Format):
     elif fmt == Format.NCL:
         x = x.flatten(1, 2).transpose(1, 2)
     return x
-
-
-def last_token_pool(
-    last_hidden_states: torch.Tensor, 
-    attention_mask: torch.Tensor
-) -> torch.Tensor:
-    left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
-    if left_padding:
-        return last_hidden_states[:, -1]
-    else:
-        sequence_lengths = attention_mask.sum(dim=1) - 1
-        batch_size = last_hidden_states.shape[0]
-        return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device),
-                                  sequence_lengths]

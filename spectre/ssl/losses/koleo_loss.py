@@ -1,38 +1,68 @@
+# Mostly copy paste from https://github.com/lightly-ai/lightly/blob/master/lightly/loss/koleo_loss.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class KoLeoLoss(nn.Module):
-    """
-    Kozachenko-Leonenko entropic loss regularizer from Sablayrolles et al. 
-    - 2018 - Spreading vectors for similarity search
-    """
-    def __init__(self):
-        super().__init__()
-        self.pdist = nn.PairwiseDistance(2, eps=1e-8)
+    """KoLeo loss based on [0].
 
-    def pairwise_nns_inner(self, x):
-        """
-        Pairwise nearest neighbors for L2-normalized vectors.
-        Uses Torch rather than Faiss to remain on GPU.
-        """
-        # parwise dot products (= inverse distance)
-        dots = torch.mm(x, x.t())
-        n = x.shape[0]
-        dots.view(-1)[:: (n + 1)].fill_(-1)  # Trick to fill diagonal with -1
-        # max inner prod -> min distance
-        _, I = torch.max(dots, dim=1)  # noqa: E741
-        return I
+    KoLeo loss is a regularizer that encourages a uniform span of the features in a
+    batch by penalizing the distance between the features and their nearest
+    neighbors.
 
-    def forward(self, student_output, eps=1e-8):
-        """
+    Implementation is based on [1].
+
+    - [0]: Spreading vectors for similarity search, 2019, https://arxiv.org/abs/1806.03198
+    - [1]: https://github.com/facebookresearch/dinov2/blob/main/dinov2/loss/koleo_loss.py
+
+    Attributes:
+        p:
+            The norm degree for pairwise distance calculation.
+        eps:
+            Small value to avoid division by zero.
+    """
+
+    def __init__(
+        self,
+        p: float = 2,
+        eps: float = 1e-8,
+    ):
+        """Initializes the KoLeoLoss module with the specified parameters.
+
         Args:
-            student_output (BxD): backbone output of student
+            p:
+                The norm degree for pairwise distance calculation.
+            eps:
+                Small value to avoid division by zero.
         """
-        with torch.amp.autocast("cuda", enabled=False):
-            student_output = F.normalize(student_output, eps=eps, p=2, dim=-1)
-            I = self.pairwise_nns_inner(student_output)  # noqa: E741
-            distances = self.pdist(student_output, student_output[I])  # BxD, BxD -> B
-            loss = -torch.log(distances + eps).mean()
+
+        super().__init__()
+        self.p = p
+        self.eps = eps
+        self.pairwise_distance = nn.PairwiseDistance(p=p, eps=eps)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through KoLeo Loss.
+
+        Args:
+            x: Tensor with shape (batch_size, embedding_size).
+
+        Returns:
+            Loss value.
+        """
+        # Normalize the input tensor
+        x = F.normalize(x, p=2, dim=-1, eps=self.eps)
+
+        # Calculate cosine similarity.
+        cos_sim = torch.mm(x, x.t())
+        cos_sim.fill_diagonal_(-2)
+
+        # Get nearest neighbors.
+        nn_idx = cos_sim.argmax(dim=1)
+        nn_dist: torch.Tensor = self.pairwise_distance(x, x[nn_idx])
+
+        # Compute the loss
+        loss = -(nn_dist + self.eps).log().mean()
+
         return loss

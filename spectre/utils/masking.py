@@ -1,91 +1,208 @@
 import math
-import random
+from typing import Optional, Tuple, Union
 
-import numpy as np
+import torch
 
 
-class MaskingGenerator:
-    def __init__(
-        self,
-        input_size,
-        num_masking_patches=None,
-        min_num_patches=4,
-        max_num_patches=None,
-        min_aspect=0.3,
-        max_aspect=None,
-    ):
-        if not isinstance(input_size, tuple):
-            input_size = tuple(input_size)
-        self.height, self.width, self.depth = input_size
+def _random_block_mask(
+    size: Tuple[int, int, int],
+    num_masks: int,
+    min_num_masks_per_block: int = 4,
+    max_num_masks_per_block: Optional[int] = None,
+    max_attempts_per_block: int = 10,
+    generator: Optional[torch.Generator] = None,
+    device: Optional[Union[torch.device, str]] = None,
+) -> torch.Tensor:
+    """3D helper: generate a (H, W, D) boolean mask by placing cuboidal blocks.
 
-        self.num_patches = self.height * self.width * self.depth
-        self.num_masking_patches = num_masking_patches
+    - size: (H, W, D)
+    - num_masks: target total number of masked voxels for this image
+    - min_num_masks_per_block / max_num_masks_per_block: voxel-range per block
+    """
+    H, W, D = size
+    total = H * W * D
+    num_masks = min(max(0, int(num_masks)), total)
 
-        self.min_num_patches = min_num_patches
-        self.max_num_patches = num_masking_patches if max_num_patches is None else max_num_patches
+    if max_num_masks_per_block is None:
+        max_num_masks_per_block = max(1, num_masks)
 
-        max_aspect = max_aspect or 1 / min_aspect
-        self.log_aspect_ratio = (math.log(min_aspect), math.log(max_aspect))
+    mask = torch.zeros((D, H, W), dtype=torch.bool, device=device)
+    masked_count = 0
+    global_attempts = 0
 
-    def __repr__(self):
-        repr_str = "Generator3D(%d, %d, %d -> [%d ~ %d], max = %d, %.3f ~ %.3f)" % (
-            self.height,
-            self.width,
-            self.depth,
-            self.min_num_patches,
-            self.max_num_patches,
-            self.num_masking_patches,
-            self.log_aspect_ratio[0],
-            self.log_aspect_ratio[1],
-        )
-        return repr_str
+    orders = [(0, 1, 2), (1, 2, 0), (2, 0, 1)]
 
-    def get_shape(self):
-        return self.height, self.width, self.depth
+    # Try to place blocks until we have enough masked voxels or we exceed attempts
+    while masked_count < num_masks and global_attempts < max_attempts_per_block:
+        global_attempts += 1
 
-    def _mask(self, mask, max_mask_patches):
-        delta = 0
-        for _ in range(10):
-            target_area = random.uniform(self.min_num_patches, max_mask_patches)
-            aspect_ratio_h = math.exp(random.uniform(*self.log_aspect_ratio))
-            aspect_ratio_w = math.exp(random.uniform(*self.log_aspect_ratio))
-            aspect_ratio_d = math.exp(random.uniform(*self.log_aspect_ratio))
-            
-            h = int(round(math.pow(target_area * aspect_ratio_h * aspect_ratio_w, 1./3.)))
-            w = int(round(math.pow(target_area / (aspect_ratio_h * aspect_ratio_d), 1./3.)))
-            d = int(round(math.pow(target_area / (aspect_ratio_w * aspect_ratio_d), 1./3.)))
+        # choose target voxels for this block
+        target_voxels = int(torch.randint(
+            min_num_masks_per_block, max_num_masks_per_block + 1, (1,), generator=generator
+        ).item())
 
-            if w < self.width and h < self.height and d < self.depth:
-                top = random.randint(0, self.height - h)
-                left = random.randint(0, self.width - w)
-                front = random.randint(0, self.depth - d)
+        found = False
+        local_attempts = 0
+        while not found and local_attempts < max_attempts_per_block:
+            local_attempts += 1
 
-                num_masked = mask[top : top + h, left : left + w, front: front + d].sum()
-                
-                # Overlap
-                if 0 < h * w * d - num_masked <= max_mask_patches:
-                    for i in range(top, top + h):
-                        for j in range(left, left + w):
-                            for k in range(front, front + d):
-                                if mask[i, j, k] == 0:
-                                    mask[i, j, k] = 1
-                                    delta += 1
+            # random pick order for dims to reduce bias
+            order_idx = int(torch.randint(0, 3, (1,), generator=generator).item())
+            order = orders[order_idx]
 
-                if delta > 0:
-                    break
-        return delta
-
-    def __call__(self, num_masking_patches=0):
-        mask = np.zeros(shape=self.get_shape(), dtype=bool)
-        mask_count = 0
-        while mask_count < num_masking_patches:
-            max_mask_patches = num_masking_patches - mask_count
-            max_mask_patches = min(max_mask_patches, self.max_num_patches)
-
-            delta = self._mask(mask, max_mask_patches)
-            if delta == 0:
-                break
+            # pick first dimension
+            if order[0] == 0:
+                h = int(torch.randint(1, min(H, target_voxels) + 1, (1,), generator=generator).item())
+            elif order[0] == 1:
+                w = int(torch.randint(1, min(W, target_voxels) + 1, (1,), generator=generator).item())
             else:
-                mask_count += delta
+                d = int(torch.randint(1, min(D, target_voxels) + 1, (1,), generator=generator).item())
 
-        return mask
+            # progressively choose remaining dims while ensuring feasibility
+            try:
+                if order[0] == 0:
+                    # h chosen -> pick w then compute d_needed
+                    max_w = max(1, min(W, target_voxels // h))
+                    w = int(torch.randint(1, max_w + 1, (1,), generator=generator).item())
+                    d_needed = math.ceil(target_voxels / (h * w))
+                    if d_needed <= D:
+                        d = max(1, d_needed)
+                        found = True
+                elif order[0] == 1:
+                    # w chosen -> pick d then compute h_needed
+                    max_d = max(1, min(D, target_voxels // w))
+                    d = int(torch.randint(1, max_d + 1, (1,), generator=generator).item())
+                    h_needed = math.ceil(target_voxels / (d * w))
+                    if h_needed <= H:
+                        h = max(1, h_needed)
+                        found = True
+                else:
+                    # d chosen -> pick h then compute w_needed
+                    max_h = max(1, min(H, target_voxels // d))
+                    h = int(torch.randint(1, max_h + 1, (1,), generator=generator).item())
+                    w_needed = math.ceil(target_voxels / (d * h))
+                    if w_needed <= W:
+                        w = max(1, w_needed)
+                        found = True
+
+            except ValueError:
+                # in case of invalid ranges (defensive); just continue trying
+                continue
+
+            # fallback alternative attempt: try simple factorization heuristics
+            if not found:
+                # attempt small-to-large factorization
+                for hh in range(1, min(H, target_voxels) + 1):
+                    for ww in range(1, min(W, target_voxels // hh) + 1):
+                        dd = math.ceil(target_voxels / (hh * ww))
+                        if dd <= D:
+                            h, w, d = hh, ww, dd
+                            found = True
+                            break
+                    if found:
+                        break
+
+        if not found:
+            # couldn't find a fitting block this global attempt; move on
+            continue
+
+        # clamp block dims to volume just in case and ensure at least 1
+        h = min(max(1, int(h)), H)
+        w = min(max(1, int(w)), W)
+        d = min(max(1, int(d)), D)
+
+        # choose random location so block fits
+        x0 = int(torch.randint(0, (H - h) + 1, (1,), generator=generator).item()) if H - h > 0 else 0
+        y0 = int(torch.randint(0, (W - w) + 1, (1,), generator=generator).item()) if W - w > 0 else 0
+        z0 = int(torch.randint(0, (D - d) + 1, (1,), generator=generator).item()) if D - d > 0 else 0
+
+        mask[x0 : x0 + h, y0 : y0 + w, z0 : z0 + d] = True
+        masked_count = int(mask.sum().item())
+
+    # If still short, fill remaining voxels at random positions
+    if masked_count < num_masks:
+        remaining = num_masks - masked_count
+        indices = torch.nonzero(~mask, as_tuple=False)
+        if indices.numel() > 0:
+            perm = torch.randperm(indices.shape[0], generator=generator, device=mask.device)
+            pick = indices[perm[:remaining]]
+            mask[pick[:, 0], pick[:, 1], pick[:, 2]] = True
+
+    return mask
+
+
+def random_block_mask(
+    size: Tuple[int, int, int, int],
+    batch_mask_ratio: float = 0.5,
+    min_image_mask_ratio: float = 0.1,
+    max_image_mask_ratio: float = 0.5,
+    min_num_masks_per_block: int = 4,
+    max_num_masks_per_block: Optional[int] = None,
+    max_attempts_per_block: int = 10,
+    seed: Optional[int] = None,
+    generator: Optional[torch.Generator] = None,
+    device: Optional[Union[torch.device, str]] = None,
+) -> torch.Tensor:
+    """Create random block masks for 3D volumes only.
+
+    Args:
+        size: (B, H, W, D)
+        batch_mask_ratio: fraction of images in the batch to apply masking to
+        min_image_mask_ratio / max_image_mask_ratio: per-image mask fraction range
+        min_num_masks_per_block / max_num_masks_per_block: voxels per block range
+        max_attempts_per_block: attempts to find a fitting block
+        seed: optional int seed. If provided, a new torch.Generator with this seed is created.
+        generator: optional torch.Generator (preferred if you already have one). If both
+                   generator and seed are provided, `generator` takes precedence.
+        device: device for returned tensor
+
+    Returns:
+        boolean tensor with shape (B, H, W, D)
+    """
+    if len(size) != 4:
+        raise ValueError("size must be (B, H, W, D) for 3D masking.")
+
+    B, H, W, D = size
+
+    if max_image_mask_ratio < min_image_mask_ratio:
+        raise ValueError("max_image_mask_ratio must be >= min_image_mask_ratio.")
+    
+    if generator is None:
+        generator = torch.Generator()
+        if seed is not None:
+            generator.manual_seed(seed)
+        else:
+            # if user didn't request deterministic seed, use a random seed based on torch.initial_seed()
+            # this keeps behavior similar to torch defaults but still uses a generator.
+            generator.manual_seed(torch.initial_seed() & ((1 << 63) - 1))
+
+    num_images_masked = int(B * batch_mask_ratio)
+    probs = torch.linspace(min_image_mask_ratio, max_image_mask_ratio, num_images_masked + 1).tolist()
+
+    image_masks = []
+    total_voxels = H * W * D
+
+    for prob_min, prob_max in zip(probs[:-1], probs[1:]):
+        # choose number of masked voxels for this image
+        u = float(prob_min + (prob_max - prob_min) * torch.rand(1, generator=generator).item())
+        num_mask = int(total_voxels * u)
+        image_masks.append(
+            _random_block_mask(
+                size=(H, W, D),
+                num_masks=num_mask,
+                min_num_masks_per_block=min_num_masks_per_block,
+                max_num_masks_per_block=max_num_masks_per_block,
+                max_attempts_per_block=max_attempts_per_block,
+                generator=generator,
+                device=device,
+            )
+        )
+
+    # Add non-masked images (all False) to fill the batch
+    for _ in range(num_images_masked, B):
+        image_masks.append(torch.zeros((H, W, D), dtype=torch.bool, device=device))
+
+    perm = torch.randperm(B, generator=generator).tolist()
+    image_masks = [image_masks[i] for i in perm]
+    
+    return torch.stack(image_masks)

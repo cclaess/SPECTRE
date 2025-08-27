@@ -11,6 +11,7 @@ train:
   - panorama
   - abdomenct_1k
   data_dir: /data/
+  data_fraction: 1.0
   output_dir: .
   saveckp_freq: 20
   resume_ckp: true
@@ -20,10 +21,13 @@ train:
   pin_memory: true
   persistent_workers: true
   drop_last: true
+  use_thread: false
   cache_dataset: true
   cache_dir: /data/cache/monai/
+  use_gds: false
   log_wandb: true
   log_freq: 1
+  log_grad_freq: 100
 optim:
   epochs: 100
   weight_decay: 0.04
@@ -52,6 +56,9 @@ model:
   mask_ratio_min: 0.1
   mask_ratio_max: 0.5
   mask_probability: 0.5
+  ibot_seperate_head: false
+  student_drop_path_rate: 0.1
+  num_local_views: 8
   dino_loss_weight: 1.0
   koleo_loss_weight: 0.1
   ibot_loss_weight: 1.0

@@ -1,48 +1,51 @@
+# mostly copy paste from https://github.com/lightly-ai/lightly/blob/master/lightly/loss/ibot_loss.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
+
+from spectre.ssl.losses._center import Center
 
 
 class iBOTPatchLoss(nn.Module):
-    """
-    Patch-level contrastive loss used in iBOT.
+    """Implementation of the iBOT patch loss [0] as used in DINOv2 [1].
 
-    This loss function aligns patch representations from a teacher-student model,
-    preventing collapse and ensuring stable training through centering.
+    Implementation is based on [2].
+
+    - [0]: iBOT, 2021, https://arxiv.org/abs/2111.07832
+    - [1]: DINOv2, 2023, https://arxiv.org/abs/2304.07193
+    - [2]: https://github.com/facebookresearch/dinov2/blob/main/dinov2/loss/ibot_patch_loss.py
+
+    Attributes:
+        output_dim:
+            Dimension of the model output.
+        teacher_temp:
+            Temperature for the teacher output.
+        student_temp:
+            Temperature for the student output.
+        center_mode:
+            Mode for center calculation. Only 'mean' is supported.
+        center_momentum:
+            Momentum term for the center update.
     """
 
     def __init__(
         self,
-        output_dim: int,
-        warmup_teacher_temp: float = 0.04,
+        output_dim: int = 65536,
         teacher_temp: float = 0.04,
-        warmup_teacher_temp_epochs: int = 30,
         student_temp: float = 0.1,
+        center_mode: str = "mean",
         center_momentum: float = 0.9,
     ) -> None:
-        """Initializes the iBOT patch loss.
-
-        Args:
-            output_dim: Output dimensionality of patch embeddings.
-            student_temp: Temperature parameter for the student model.
-            center_momentum: Momentum for updating the teacher center.
-            warmup_teacher_temp: Initial temperature for the teacher.
-            teacher_temp: Final temperature for the teacher.
-            warmup_teacher_temp_epochs: Epochs over which to warm up the teacher temperature.
-        """
+        """Initializes the iBOTPatchLoss module with the specified parameters."""
         super().__init__()
-        self.student_temp = student_temp
-        self.center_momentum = center_momentum
-        self.teacher_temp = teacher_temp
-        self.warmup_teacher_temp_epochs = warmup_teacher_temp_epochs
-        self.register_buffer("center", torch.zeros(1, 1, output_dim))
 
-        # Warmup schedule for teacher temperature
-        self.teacher_temp_schedule = torch.linspace(
-            start=warmup_teacher_temp,
-            end=teacher_temp,
-            steps=warmup_teacher_temp_epochs,
+        self.teacher_temp = teacher_temp
+        self.student_temp = student_temp
+
+        self.center = Center(
+            size=(1, output_dim),
+            mode=center_mode,
+            momentum=center_momentum,
         )
 
     def forward(
@@ -50,89 +53,54 @@ class iBOTPatchLoss(nn.Module):
         teacher_out: torch.Tensor,
         student_out: torch.Tensor,
         mask: torch.Tensor,
-        epoch: int,
+        teacher_temp: float | None = None,
     ) -> torch.Tensor:
-        """Computes the cross-entropy loss for patch tokens.
+        """Forward pass through the iBOT patch loss.
 
         Args:
-            teacher_out: (B, N, D) Tensor of teacher patch embeddings.
-            student_out: (B, N, D) Tensor of student patch embeddings.
-            mask: (B, N) Binary mask tensor for valid patches.
-            epoch: The current training epoch.
+            teacher_out:
+                Tensor with shape (batch_size * sequence_length, embed_dim) containing
+                the teacher output of the masked tokens.
+            student_out:
+                Tensor with shape (batch_size * sequence_length, embed_dim) containing
+                the student output of the masked tokens.
+            mask:
+                Boolean tensor with shape (batch_size, height, width, depth) containing
+                the token mask. Exactly batch_size * sequence_length entries must be set
+                to True in the mask.
+            teacher_temp:
+                The temperature used for the teacher output. If None, the default
+                temperature defined in __init__ is used.
 
         Returns:
-            Scalar loss value.
+            The loss value.
         """
-        teacher_temp = (
-            self.teacher_temp_schedule[epoch]
-            if epoch < self.warmup_teacher_temp_epochs
-            else self.teacher_temp
+        # B = batch size, N = sequence length = number of masked tokens, D = embed dim
+        # H = height (in tokens), W = width (in tokens)
+        # Note that N <= H * W depending on how many tokens are masked.
+        teacher_temperature = torch.tensor(
+            teacher_temp if teacher_temp is not None else self.teacher_temp
         )
 
-        teacher_out = F.softmax((teacher_out - self.center) / teacher_temp, dim=-1)
-        student_out = F.log_softmax(student_out / self.student_temp, dim=-1)
-
-        loss = -torch.sum(teacher_out * student_out, dim=-1)
-        loss = (loss * mask).sum(dim=-1) / mask.sum(dim=-1).clamp(min=1.0)
-        loss = loss.mean()
-
-        self.update_center(teacher_out)
-        return loss
-
-    def forward_masked(
-        self,
-        teacher_out: torch.Tensor,
-        student_out: torch.Tensor,
-        mask: torch.Tensor,
-        epoch: int,
-        n_masked_patches: int = None,
-        masks_weight: torch.Tensor = None,
-    ) -> torch.Tensor:
-        """Computes the cross-entropy loss for masked patch tokens.
-
-        Args:
-            teacher_out: (B, N, D) Tensor of teacher patch embeddings.
-            student_out: (B, N, D) Tensor of student patch embeddings.
-            mask: (B, N) Binary mask tensor for valid patches.
-            epoch: The current training epoch.
-            n_masked_patches: Optional number of masked patches to consider.
-            masks_weight: Optional tensor for weighting masked patches.
-
-        Returns:
-            Scalar loss value.
-        """
-        teacher_temp = (
-            self.teacher_temp_schedule[epoch]
-            if epoch < self.warmup_teacher_temp_epochs
-            else self.teacher_temp
+        # Calculate cross-entropy loss.
+        teacher_softmax = F.softmax(
+            (teacher_out - self.center.value) / teacher_temperature, dim=-1
         )
-        
-        teacher_out = F.softmax((teacher_out - self.center) / teacher_temp, dim=-1)
-        loss = torch.sum(teacher_out * F.log_softmax(student_out / self.student_temp, dim=-1), dim=-1)
+        student_log_softmax = F.log_softmax(student_out / self.student_temp, dim=-1)
 
-        if masks_weight is None:
-            masks_weight = (
-                (1 / mask.sum(-1).clamp(min=1.0))
-                .unsqueeze(-1)
-                .expand_as(mask)[mask]
-            )
+        # (B * N, D) -> (B * N)
+        loss = -torch.sum(teacher_softmax * student_log_softmax, dim=-1)
 
-        if n_masked_patches is not None:
-            loss = loss[:n_masked_patches]
+        # Get weights.
+        # (B, H, W, D) -> (B, 1, 1, 1)
+        num_masked_per_image = mask.sum(dim=(1, 2, 3), keepdim=True).clamp(min=1.0)
+        # (B, 1, 1) -> (B, H, W) -> (B * N)
+        weight = (1.0 / num_masked_per_image).expand_as(mask)[mask]
 
-        loss = loss * masks_weight
-        loss = -loss.sum() / mask.shape[0]
+        # Apply weighting.
+        B = mask.shape[0]
+        loss = (loss * weight).sum() / B
 
-        self.update_center(teacher_out)
+        self.center.update(teacher_out)
+
         return loss
-
-    @torch.no_grad()
-    def update_center(self, teacher_out: torch.Tensor) -> None:
-        """Moving average update of the center used for the teacher output."""
-        batch_center = teacher_out.mean(dim=(0, 1), keepdim=True)
-        
-        if dist.is_available() and dist.is_initialized():
-            dist.all_reduce(batch_center)
-            batch_center = batch_center / dist.get_world_size()
-        
-        self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
