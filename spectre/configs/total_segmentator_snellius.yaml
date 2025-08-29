@@ -1,7 +1,7 @@
 train:
   batch_size_per_gpu: 1
   grad_accum_steps: 1
-  data_dir: /app/data/Totalsegmentator_dataset_v201
+  data_dir: /projects/prjs1669/spectre_data/Totalsegmentator_dataset_v201
   label_groups: 
     - lungs
   output_dir: .
@@ -28,7 +28,7 @@ optim:
   adamw_beta1: 0.9
   adamw_beta2: 0.999
 model:
-  architecture: vit_small_patch16_128
+  architecture: vit_base_patch16_128
   pretrained_weights: null
   linear_only: false
   num_queries: 20

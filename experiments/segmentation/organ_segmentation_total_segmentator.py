@@ -3,6 +3,7 @@ import argparse
 
 import torch
 import torch.nn.functional as F
+from typing import List, Tuple, Sequence, Dict, Optional
 from accelerate import Accelerator
 from torch.optim import AdamW
 from monai.data import  DataLoader
@@ -18,8 +19,9 @@ from monai.transforms import (
     RandSpatialCropSamplesd,
     SpatialPadd,
     GridPatchd,
+    FlattenSubKeysd,
+    EnsureTyped
 )
-
 import spectre.data as data
 import spectre.models as models
 from spectre.configs import load_config
@@ -30,6 +32,153 @@ from spectre.utils import (
     cosine_warmup_schedule,
     compute_backbone_lr_multipliers,
 )
+import wandb
+@torch.no_grad()
+def make_hann_weight(roi_size: Sequence[int], eps: float = 1e-3, device=None) -> torch.Tensor:
+    """
+    3D Hann window for smooth blending (values ~0 at edges, ~1 center).
+    """
+    from math import pi
+    def hann_1d(L: int, device=None):
+        if L <= 1:
+            return torch.ones(L, device=device)
+        n = torch.arange(L, device=device, dtype=torch.float32)
+        w = 0.5 - 0.5 * torch.cos(2.0 * pi * n / (L - 1))
+        return w
+    wz, wy, wx = (hann_1d(int(roi_size[0]), device=device),
+                  hann_1d(int(roi_size[1]), device=device),
+                  hann_1d(int(roi_size[2]), device=device))
+    w = wz[:, None, None] * wy[None, :, None] * wx[None, None, :]
+    w = torch.clamp(w, min=eps)  # avoid zeros so division is safe
+    return w
+
+def _compute_starts(dim: int, roi: int, step: int) -> List[int]:
+    """
+    Evenly cover [0, dim) with windows of length `roi` stepping by `step`.
+    Always include the last start so the last window ends at dim.
+    """
+    if roi >= dim:
+        return [0]
+    starts = list(range(0, max(dim - roi, 0) + 1, step))
+    last = dim - roi
+    if starts[-1] != last:
+        starts.append(last)
+    return starts
+
+def compute_window_slices(
+    vol_shape: Sequence[int],        # D,H,W
+    roi_size: Sequence[int],         # rD,rH,rW
+    overlap: float = 0.5,
+) -> List[Tuple[slice, slice, slice]]:
+    """
+    Build list of slice triplets that cover the volume with given overlap.
+    overlap in [0, 1). Effective step = roi * (1 - overlap).
+    """
+    assert 0 <= overlap < 1, "overlap must be in [0, 1)"
+    D, H, W = map(int, vol_shape)
+    rD, rH, rW = map(int, roi_size)
+    sD = max(1, int(round(rD * (1.0 - overlap))))
+    sH = max(1, int(round(rH * (1.0 - overlap))))
+    sW = max(1, int(round(rW * (1.0 - overlap))))
+    z_starts = _compute_starts(D, rD, sD)
+    y_starts = _compute_starts(H, rH, sH)
+    x_starts = _compute_starts(W, rW, sW)
+    slices = []
+    for z in z_starts:
+        for y in y_starts:
+            for x in x_starts:
+                slices.append((slice(z, z + rD), slice(y, y + rH), slice(x, x + rW)))
+    return slices
+
+@torch.no_grad()
+def sliding_window_inference_3d(
+    model: torch.nn.Module,
+    image: torch.Tensor,               # [B=1, C, D, H, W], already on device
+    roi_size: Sequence[int] = (128, 128, 64),
+    overlap: float = 0.5,
+    crop_batch_size: int = 4,
+    num_classes: Optional[int] = None, # if None, infer from model output
+    blend: str = "mean",               # "mean" or "hann"
+    amp: bool = True,
+) -> torch.Tensor:
+    """
+    Returns blended logits of shape [C_out, D, H, W].
+
+    """
+    assert image.ndim == 5 and image.shape[0] == 1, "Expect [1, C, D, H, W] image per volume."
+    device = image.device
+    _, inC, D, H, W = image.shape
+    rD, rH, rW = map(int, roi_size)
+
+    # Optional: if roi larger than volume, pad to fit (should be rare if you already SpatialPad)
+    padD = max(0, rD - D)
+    padH = max(0, rH - H)
+    padW = max(0, rW - W)
+    if any(p > 0 for p in (padD, padH, padW)):
+        # Pad at the end of each dim (z+, y+, x+)
+        image = F.pad(image, (0, padW, 0, padH, 0, padD), mode="constant", value=0)
+        _, _, D, H, W = image.shape
+
+    win_slices = compute_window_slices((D, H, W), roi_size, overlap)
+
+    # Build blending weight
+    if blend == "hann":
+        weight_patch = make_hann_weight(roi_size, device=device)  # [rD,rH,rW]
+    else:
+        weight_patch = torch.ones(roi_size, device=device)
+
+    # Prime shapes by running one dummy forward later if num_classes None; for now allocate lazily
+    out_sum = None    # [C_out, D, H, W]
+    weight_sum = torch.zeros((D, H, W), device=device, dtype=torch.float32)
+
+    model_was_training = model.training
+    model.eval()
+
+
+    batch_crops = []
+    batch_locs = []
+
+    for idx, (sz, sy, sx) in enumerate(win_slices):
+        crop = image[..., sz, sy, sx]  # [1, C, rD, rH, rW]
+        batch_crops.append(crop)
+        batch_locs.append((sz, sy, sx))
+
+        if len(batch_crops) == crop_batch_size or idx == len(win_slices) - 1:
+            crop_batch = torch.cat(batch_crops, dim=0)  # [Bcrop, C, rD, rH, rW]
+
+            mask_logits_per_block, class_logits_per_block = model(crop_batch)               # -> [Bcrop, Cout, rD, rH, rW]
+
+            for i, (mask_logits, class_logits) in enumerate(list(zip(mask_logits_per_block, class_logits_per_block))):
+                mask_logits = F.interpolate(
+                    mask_logits,
+                    size=roi_size,
+                    mode="trilinear",
+                )
+                logits = to_per_pixel_logits_semantic(mask_logits, class_logits)
+
+            if num_classes is None:
+                num_classes = logits.shape[1]
+
+            if out_sum is None:
+                out_sum = torch.zeros((num_classes, D, H, W), device=device, dtype=logits.dtype)
+
+            # Accumulate with weights
+            for b in range(logits.shape[0]):
+                sz, sy, sx = batch_locs[b]
+                out_sum[:, sz, sy, sx] += logits[b] * weight_patch
+                weight_sum[sz, sy, sx] += weight_patch
+
+            # reset
+            batch_crops.clear()
+            batch_locs.clear()
+
+    # Normalize by weights
+    # expand weight_sum to channels: [1,D,H,W] then broadcast
+    out = out_sum / torch.clamp(weight_sum, min=1e-6)  # broadcasting along channel dim
+    if model_was_training:
+        model.train()
+    return out  # [C_out, D, H, W
+
 
 
 def get_args_parser() -> argparse.ArgumentParser:
@@ -91,7 +240,7 @@ def main(cfg, accelerator: Accelerator):
         RandSpatialCropSamplesd(
             keys=["image"] + labels,
             roi_size=(128, 128, 64),
-            num_samples=12,
+            num_samples=2,
             random_size=False,
         ),
     ])
@@ -118,9 +267,8 @@ def main(cfg, accelerator: Accelerator):
             keys=["image"] + labels,
             spatial_size=(128, 128, 64),
         ),  # will only pad the smaller images
-        GridPatchd(
-            keys=["image"] + labels,
-            patch_size=(128, 128, 64),
+        EnsureTyped(
+            keys=["image"] + labels
         ),
     ])
 
@@ -130,8 +278,10 @@ def main(cfg, accelerator: Accelerator):
         "include_labels": True,
         "label_groups": cfg.train.label_groups,
     }
+    
     if cfg.train.cache_dataset:
         data_kwargs["cache_dir"] = cfg.train.cache_dir
+
     train_dataset = getattr(
         data, 
         "TotalSegmentatorDataset" if not cfg.train.cache_dataset \
@@ -158,15 +308,17 @@ def main(cfg, accelerator: Accelerator):
         drop_last=cfg.train.drop_last,
         shuffle=True,
     )
+
     val_dataloader = DataLoader(
         val_dataset,
-        batch_size=cfg.train.batch_size_per_gpu,
+        batch_size=1,
         num_workers=1,
         pin_memory=cfg.train.pin_memory,
         persistent_workers=cfg.train.persistent_workers,
         drop_last=cfg.train.drop_last,
         shuffle=False,
     )
+
     
     # Initialize model (only support ViT models with EoMT for now)
     if (
@@ -264,6 +416,7 @@ def main(cfg, accelerator: Accelerator):
 
                 # Forward pass
                 imgs = batch["image"]
+                print(imgs.shape)
                 mask_logits_per_block, class_logits_per_block = model(imgs)
 
                 # Loss calculation
@@ -321,34 +474,36 @@ def main(cfg, accelerator: Accelerator):
         # Evaluate model
         model.eval()
         best_dice: float = 0.0
+
+
         with torch.no_grad():
             for batch in val_dataloader:
                 # Forward pass
                 imgs = batch["image"]
-                mask_logits_per_block, class_logits_per_block = model(imgs)
+                print(imgs.shape)
+
+                expected_out_channels = len(labels)   # for no-object class
+                logits = sliding_window_inference_3d(
+                                    model=model,
+                                    image=imgs,                                 # [1,C,D,H,W]
+                                    overlap=0.25,
+                                    crop_batch_size=2,
+                                    num_classes=expected_out_channels,         # helps pre-allocate
+                                    blend="hann")  # [C_out, D, H, W]
 
                 B = imgs.shape[0]
                 targets = [{
                     "labels": torch.arange(1, len(labels) + 1).to(imgs.device),
-                    "masks": torch.stack([batch[l][i].squeeze(0) for l in labels], dim=0).to(imgs.device),
+                    "masks": torch.stack([batch[l][i].squeeze(0).to(torch.int) for l in labels], dim=0).to(imgs.device),
                 } for i in range(B)]  # remove channel dimension added by transforms
+
                 targets = to_per_pixel_targets_semantic(targets, ignore_idx=0)
 
-                for i, (mask_logits, class_logits) in enumerate(
-                    list(zip(mask_logits_per_block, class_logits_per_block))
-                ):
-                    mask_logits = F.interpolate(
-                        mask_logits,
-                        size=imgs.shape[-3:],
-                        mode="trilinear",
-                    )
-                    logits = to_per_pixel_logits_semantic(mask_logits, class_logits)
+                # Take the argmax to get class predictions
+                y_pred = torch.argmax(logits, dim=1)
 
-                    # Take the argmax to get class predictions
-                    y_pred = torch.argmax(logits, dim=1)
-
-                    # Compute Dice score
-                    dice(y_pred=y_pred, y=targets[i])
+                # Compute Dice score
+                dice(y_pred=y_pred, y=targets)
 
         # Get predictions and labels form all devices
         val_dice = dice.aggregate().item()
