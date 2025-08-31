@@ -1,5 +1,5 @@
 train:
-  batch_size_per_gpu: 4
+  batch_size_per_gpu: 10
   grad_accum_steps: 1
   data_dir: /data/Totalsegmentor_dataset_v201
   label_groups: 
