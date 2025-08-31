@@ -285,7 +285,7 @@ def main(cfg, accelerator: Accelerator):
     train_dataset = getattr(
         data, 
         "TotalSegmentatorDataset" if not cfg.train.cache_dataset \
-            else "TotalSegmentatorCacheDataset")(
+            else "TotalSegmentatorPersistentDataset")(
                 **data_kwargs,
                 transform=train_transform,
                 subset="train",
@@ -293,7 +293,7 @@ def main(cfg, accelerator: Accelerator):
     val_dataset = getattr(
         data,
         "TotalSegmentatorDataset" if not cfg.train.cache_dataset \
-            else "TotalSegmentatorCacheDataset")(
+            else "TotalSegmentatorPersistentDataset")(
                 **data_kwargs,
                 transform=val_transform,
                 subset="val",
@@ -416,7 +416,6 @@ def main(cfg, accelerator: Accelerator):
 
                 # Forward pass
                 imgs = batch["image"]
-                print(imgs.shape)
                 mask_logits_per_block, class_logits_per_block = model(imgs)
 
                 # Loss calculation
