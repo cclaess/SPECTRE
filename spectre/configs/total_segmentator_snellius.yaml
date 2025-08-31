@@ -12,7 +12,7 @@ train:
   pin_memory: true
   persistent_workers: true
   drop_last: true
-  cache_dataset: true
+  cache_dataset: false
   cache_dir: /data/Totalsegmentor_dataset_v201_cache
   log_wandb: true
   log_freq: 1
