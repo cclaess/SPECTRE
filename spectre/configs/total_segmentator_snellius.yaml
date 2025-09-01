@@ -13,9 +13,15 @@ train:
   persistent_workers: true
   drop_last: true
   cache_dataset: false
-  cache_dir: /data/Totalsegmentor_dataset_v201_cache
+  cache_dir: /scratch-shared/cviviers/Totalsegmentor_dataset_v201_cache
   log_wandb: true
   log_freq: 1
+val:
+  batch_size_per_gpu: 24
+  num_workers: 1
+  pin_memory: true
+  persistent_workers: true
+  drop_last: false
 optim:
   epochs: 100
   base_lr: 0.0001

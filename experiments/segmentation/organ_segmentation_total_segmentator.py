@@ -312,10 +312,10 @@ def main(cfg, accelerator: Accelerator):
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=1,
-        num_workers=1,
-        pin_memory=cfg.train.pin_memory,
-        persistent_workers=cfg.train.persistent_workers,
-        drop_last=cfg.train.drop_last,
+        num_workers=cfg.val.num_workers,
+        pin_memory=cfg.val.pin_memory,
+        persistent_workers=cfg.val.persistent_workers,
+        drop_last=cfg.val.drop_last,
         shuffle=False,
     )
 
@@ -479,14 +479,12 @@ def main(cfg, accelerator: Accelerator):
             for batch in val_dataloader:
                 # Forward pass
                 imgs = batch["image"]
-                print(imgs.shape)
-
                 expected_out_channels = len(labels)   # for no-object class
                 logits = sliding_window_inference_3d(
                                     model=model,
                                     image=imgs,                                 # [1,C,D,H,W]
-                                    overlap=0.25,
-                                    crop_batch_size=2,
+                                    overlap=0.1,
+                                    crop_batch_size=cfg.val.batch_size_per_gpu,
                                     num_classes=expected_out_channels,         # helps pre-allocate
                                     blend="hann")  # [C_out, D, H, W]
 
