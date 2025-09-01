@@ -1,5 +1,5 @@
 train:
-  batch_size_per_gpu: 30
+  batch_size_per_gpu: 32
   grad_accum_steps: 1
   data_dir: /data/Totalsegmentor_dataset_v201
   label_groups: 
@@ -12,7 +12,7 @@ train:
   pin_memory: true
   persistent_workers: true
   drop_last: true
-  cache_dataset: false
+  cache_dataset: true
   cache_dir: /scratch-shared/cviviers/Totalsegmentor_dataset_v201_cache
   log_wandb: true
   log_freq: 1
@@ -35,7 +35,7 @@ optim:
   adamw_beta2: 0.999
 model:
   architecture: vit_base_patch16_128
-  pretrained_weights: null
+  pretrained_weights: /weights/siglip/image_backbone.pt
   linear_only: false
   num_queries: 20
   num_blocks: 4
