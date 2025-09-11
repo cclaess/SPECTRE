@@ -49,6 +49,7 @@ model:
   hidden_dim: 2048
   bottleneck_dim: 256
   output_dim: 65536
+  layer_scale_init_value: 1e-3
   momentum_teacher: 0.992
   momentum_teacher_end: 0.999
   warmup_teacher_temp: 0.04

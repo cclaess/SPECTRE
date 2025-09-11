@@ -104,7 +104,8 @@ def main(cfg, accelerator: Accelerator):
             rope_kwargs={
                 "base": 1000.0,  # works for most 3D models
                 "rescale_coords": 2.0,  # s in [0.5, 2.0]
-            }
+            },
+            init_values=cfg.model.layer_scale_init_value,
         )
         embed_dim = backbone.embed_dim
     else:
@@ -304,9 +305,6 @@ def main(cfg, accelerator: Accelerator):
 
                 optimizer.step()
 
-                # Zero gradients
-                optimizer.zero_grad()
-
                 # Log loss, lr, and weight decay
                 step_time = time.time() - t0
                 t0 = time.time()
@@ -349,6 +347,9 @@ def main(cfg, accelerator: Accelerator):
                     accelerator.log({
                         f"gradients/{n}": v for n, v in gradients.items()
                     }, step=global_step)
+
+                # Zero gradients
+                optimizer.zero_grad()
 
                 # Update global step
                 global_step += 1

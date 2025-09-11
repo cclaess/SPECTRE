@@ -60,6 +60,8 @@ def get_param_groups_with_decay(
         num_layers = len(model.backbone.blocks)
     elif hasattr(model, "backbone_student") and hasattr(model.backbone_student, "blocks"):  # DINO specific
         num_layers = len(model.backbone_student.blocks)
+    elif hasattr(model, "backbone_student") and hasattr(model.backbone_student, "vit") and hasattr(model.backbone_student.vit, "blocks"):  # DINOv2 specific
+        num_layers = len(model.backbone_student.vit.blocks)
     elif hasattr(model, "backbone_image") and hasattr(model.backbone_image, "blocks"):  # SigLIP specific
         num_layers = len(model.backbone_image.blocks)
     else:

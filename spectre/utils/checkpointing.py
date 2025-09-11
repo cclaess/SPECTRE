@@ -154,7 +154,7 @@ def load_state(ckpt_path: str, **named_objects: Any) -> int:
     return epoch
 
 
-def extract_components_dinov2(checkpoint_path: str):
+def extract_model_from_checkpoint_dinov2(checkpoint_path: str):
     # Load the checkpoint
     checkpoint = torch.load(
         checkpoint_path, 
@@ -168,11 +168,11 @@ def extract_components_dinov2(checkpoint_path: str):
     # Create output folder
     output_dir = str(checkpoint_path).replace(".pt", "")
     os.makedirs(output_dir, exist_ok=True)
-    
-    # Quick check: compare the first parameter of teacher_head_ibot vs teacher_head_dino
-    teacher_dino_keys = [k for k in model_state.keys() if k.startswith("teacher_head_dino.")]
-    teacher_ibot_keys = [k for k in model_state.keys() if k.startswith("teacher_head_ibot.")]
-    
+
+    # Quick check: compare the parameters of head_teacher_ibot vs head_teacher_dino
+    teacher_dino_keys = [k for k in model_state.keys() if k.startswith("head_teacher_dino.")]
+    teacher_ibot_keys = [k for k in model_state.keys() if k.startswith("head_teacher_ibot.")]
+
     ibot_separate = True
     if teacher_dino_keys and teacher_ibot_keys:
         if all(torch.equal(model_state[dino_key], model_state[ibot_key]) \
@@ -181,16 +181,16 @@ def extract_components_dinov2(checkpoint_path: str):
     
     # Define the components to save
     components = {
-        "teacher_backbone.pt": "teacher_backbone.vit",
-        "student_backbone.pt": "student_backbone.vit",
-        "student_head_dino.pt": "student_head_dino",
-        "teacher_head_dino.pt": "teacher_head_dino"
+        "backbone_teacher.pt": "backbone_teacher.vit",
+        "backbone_student.pt": "backbone_student.vit",
+        "head_student_dino.pt": "head_student_dino",
+        "head_teacher_dino.pt": "head_teacher_dino"
     }
 
     # Add ibot heads only if separate
     if ibot_separate:
-        components["student_head_ibot.pt"] = "student_head_ibot"
-        components["teacher_head_ibot.pt"] = "teacher_head_ibot"
+        components["head_student_ibot.pt"] = "head_student_ibot"
+        components["head_teacher_ibot.pt"] = "head_teacher_ibot"
 
     # Extract and save each component
     for filename, key in components.items():
@@ -201,5 +201,3 @@ def extract_components_dinov2(checkpoint_path: str):
         torch.save(sub_state_dict, os.path.join(output_dir, filename))
     
     print(f"Components extracted to: {output_dir}")
-
-
