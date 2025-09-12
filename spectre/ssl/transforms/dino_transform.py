@@ -178,8 +178,8 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
                 a_max=(0.6, 1.0),  # [0.6 * 2000 - 1000, 1.0 * 2000 - 1000] = [200, 1000]
                 b_min=0.0,
                 b_max=1.0,
-                prob=0.5,
                 clip=True,
+                prob=0.25,
             ),
         ], lazy=lazy)
     

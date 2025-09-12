@@ -166,5 +166,11 @@ def main(args):
 if __name__ == "__main__":
     
     parser = get_args_parser()
-    args = parser.parse_args()
+    args = parser.parse_args([
+        "--embedding_dir", r"E:\spectre\results\eval\embeddings_ct_rate\dinov2\vit-l (valiant-salad-785)",
+        "--embedding_type", "image_backbone_patch",
+        "--reshape_embed_size", "8", "8", "8",
+        "--reshape_crop_size", "128", "128", "64",
+        "--image_size", "512", "512", "384",
+    ])
     main(args)

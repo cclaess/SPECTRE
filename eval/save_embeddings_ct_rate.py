@@ -25,8 +25,12 @@ from transformers import (
 import spectre.models as models
 from spectre.data import CTRateDataset
 from spectre.ssl.heads import SigLIPProjectionHead
-from spectre.utils import extended_collate_siglip, add_lora_adapters, last_token_pool
 from spectre.transforms import RandomReportTransformd
+from spectre.utils import (
+    extended_collate_siglip, 
+    add_lora_adapters, 
+    last_token_pool,
+)
 
 
 def get_args_parser():
@@ -134,32 +138,38 @@ def main(args):
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # Define transformations for the dataset
-    transform = Compose([
+    transform = [
         LoadImaged(keys=("image",)),
         EnsureChannelFirstd(keys=("image",), channel_dim="no_channel"),
         ScaleIntensityRanged(
             keys=("image",), 
-            a_min=-1000, 
-            a_max=1000, 
+            a_min=-150, 
+            a_max=250, 
             b_min=0.0, 
             b_max=1.0, 
             clip=True
         ),
         Orientationd(keys=("image",), axcodes="RAS"),
-        Spacingd(keys=("image",), pixdim=(0.75, 0.75, 1.5), mode=("bilinear",)),
-        ResizeWithPadOrCropd(keys=("image",), spatial_size=(384, 384, 256)),
+        Spacingd(keys=("image",), pixdim=(0.5, 0.5, 1.0), mode=("bilinear",)),
+        ResizeWithPadOrCropd(keys=("image",), spatial_size=(512, 512, 384)),
         GridPatchd(
             keys=("image",),
             patch_size=(128, 128, 64),
             overlap=0.0,
         ),
-        RandomReportTransformd(
-            keys=("findings", "impressions"),
-            keep_original_prob=1.0,
-            drop_prob=0.0,
-            allow_missing_keys=False
-        )
-    ])
+    ]
+    if do_text_backbone:
+        transform = Compose([
+            transform,
+            RandomReportTransformd(
+                keys=("findings", "impressions"),
+                keep_original_prob=1.0,
+                drop_prob=0.0,
+                allow_missing_keys=False,
+            )
+        ])
+    else:
+        transform = Compose(transform)
 
     # Create dataset and dataloader
     dataset = CTRateDataset(
@@ -196,7 +206,9 @@ def main(args):
                 pos_embed="rope",
                 rope_kwargs={
                     "base": 1000.0,  # works for most 3D models
-            })
+                },
+                init_values=1.0,  # Will be set otherwise if present in weights
+            )
             image_backbone_embed_dim = image_backbone.embed_dim
         else:
             raise NotImplementedError(f"Model {args.architecture} not implemented.")
@@ -438,5 +450,12 @@ def save_images(images, save_paths):
 if __name__ == "__main__":
     
     parser = get_args_parser()
-    args = parser.parse_args()
+    args = parser.parse_args([
+        "--data_dir", r"E:\Datasets\CT-RATE",
+        "--save_dir", r"E:\spectre\results\eval\embeddings_ct_rate\dinov2\vit-l (valiant-salad-785)",
+        "--architecture", "vit_large_patch16_128",
+        "--image_backbone_weights", r"E:\spectre\checkpoints\dinov2\vit-l (valient-salad-785)\checkpoint_epoch=0020\backbone_teacher.pt",
+        "--batch_size", "1",
+        "--num_workers", "1",
+    ])
     main(args)
