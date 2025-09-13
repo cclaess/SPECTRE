@@ -18,3 +18,4 @@ from .resnet import (
     resnext101,
 )
 from .eomt import EoMT
+from .seot import SEoT
