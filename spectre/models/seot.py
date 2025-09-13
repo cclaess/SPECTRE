@@ -170,10 +170,9 @@ class SEoT(nn.Module):
 
     def forward(self, x: torch.Tensor):
         x = self.backbone.patch_embed(x)
-        x = self.backbone._pos_embed(x)
+        x, rope = self.backbone._pos_embed(x)
         x = self.backbone.patch_drop(x)
         x = self.backbone.norm_pre(x)
-
         attn_mask = None
         mask_logits_per_layer = []
 
@@ -218,7 +217,6 @@ class SEoT(nn.Module):
                         i - len(self.backbone.blocks) + self.num_blocks
                     ],
                 )
-
             x = x + block.drop_path1(
                 block.ls1(self._attn(block.attn, block.norm1(x), attn_mask))
             )
@@ -234,11 +232,17 @@ if __name__ == "__main__":
     from spectre.models import vit_base_patch16_128
 
     model = SEoT(
-        backbone=vit_base_patch16_128(),
+        backbone=vit_base_patch16_128(pos_embed='rope',
+            rope_kwargs={
+                "base": 1000.0,  # works for most 3D models
+                "rescale_coords": 2.0,  # s in [0.5, 2.0]
+            },),
         num_classes=4,
         num_blocks=4,
-        masked_attn_enabled=True,
+        masked_attn_enabled=False,
     )
+
+    print(model)
 
     x = torch.randn(2, 1, 128, 128, 64)
     out = model(x)
