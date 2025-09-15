@@ -128,7 +128,7 @@ class SEoT(nn.Module):
         
         # if for_nnunet swap depth to third dimension
         if self.for_nnunet:
-            mask_logits = mask_logits.permute(0, 1, 4, 2, 3)
+            mask_logits = mask_logits.permute(0, 1, 4, 2, 3).squeeze(1)
         return mask_logits
 
     @torch.compiler.disable
@@ -174,7 +174,9 @@ class SEoT(nn.Module):
     def forward(self, x: torch.Tensor):
         if self.for_nnunet:
             # swap depth to third dimension
-            x = x.permute(0, 1, 4, 2, 3)
+            x = x.permute(0, 3, 1, 2)
+            x = x[:, None, :, :, :]
+
         x = self.backbone.patch_embed(x)
         x, rope = self.backbone._pos_embed(x)
         x = self.backbone.patch_drop(x)
@@ -249,8 +251,8 @@ if __name__ == "__main__":
         for_nnunet=True,
     )
 
-    x = torch.randn(2, 1, 64, 128, 128)
-    x = torch.randn(2, 1, 128, 128, 64)
+    x = torch.randn(2, 64, 128, 128)
+    # x = torch.randn(2, 1, 128, 128, 64)
     out = model(x)
     for o in out:
         print(o.shape)
