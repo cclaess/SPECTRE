@@ -52,7 +52,6 @@ def compute_upscale_stages(patch_size, min_size=4):
     for size in patch_size:
         stages = max(0, int(math.log2(size)) - int(math.log2(min_size)))
         num_stages.append(stages)
-    print(num_stages)
     return num_stages
 
 
@@ -65,6 +64,7 @@ class SEoT(nn.Module):
         num_blocks=4,
         masked_attn_enabled=True,
         upscale_output=True,
+        for_nnunet=False,
     ):
         super().__init__()
         self.backbone = backbone
@@ -73,7 +73,7 @@ class SEoT(nn.Module):
         self.masked_attn_enabled = masked_attn_enabled
         self.upscale_output = upscale_output
         self.register_buffer("attn_mask_probs", torch.ones(num_blocks))
-
+        self.for_nnunet = for_nnunet
         self.q = nn.Embedding(num_classes+1, self.backbone.embed_dim)
 
         # self.class_head = nn.Linear(self.backbone.embed_dim, num_classes + 1)
@@ -125,7 +125,10 @@ class SEoT(nn.Module):
                 for dim in range(len(self.backbone.patch_embed.patch_size))
             )
             mask_logits = F.interpolate(mask_logits, input_size, mode="trilinear")
-
+        
+        # if for_nnunet swap depth to third dimension
+        if self.for_nnunet:
+            mask_logits = mask_logits.permute(0, 1, 4, 2, 3)
         return mask_logits
 
     @torch.compiler.disable
@@ -169,6 +172,9 @@ class SEoT(nn.Module):
         return x
 
     def forward(self, x: torch.Tensor):
+        if self.for_nnunet:
+            # swap depth to third dimension
+            x = x.permute(0, 1, 4, 2, 3)
         x = self.backbone.patch_embed(x)
         x, rope = self.backbone._pos_embed(x)
         x = self.backbone.patch_drop(x)
@@ -240,10 +246,10 @@ if __name__ == "__main__":
         num_classes=4,
         num_blocks=4,
         masked_attn_enabled=False,
+        for_nnunet=True,
     )
 
-    print(model)
-
+    x = torch.randn(2, 1, 64, 128, 128)
     x = torch.randn(2, 1, 128, 128, 64)
     out = model(x)
     for o in out:
