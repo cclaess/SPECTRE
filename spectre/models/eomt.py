@@ -131,7 +131,7 @@ class EoMT(nn.Module):
 
         return attn_mask
 
-    def _attn(self, module: nn.Module, x: torch.Tensor, mask: Optional[torch.Tensor]):
+    def _attn(self, module: 'Attention', x: torch.Tensor, mask: Optional[torch.Tensor], rope = None):
         B, N, C = x.shape
 
         q = module.q(x).reshape(B, N, module.num_heads, module.head_dim).permute(0, 2, 1, 3)
@@ -143,6 +143,11 @@ class EoMT(nn.Module):
             mask = mask[:, None, ...].expand(-1, module.num_heads, -1, -1)
 
         dropout_p = module.attn_drop.p if self.training else 0.0
+
+        if rope is not None:
+            if isinstance(rope, list):
+                rope = tuple(torch.stack([r[i] for r in rope], dim=0) for i in range(2))
+            q, k = module.apply_rotary_pos_emb(q, k, rope)
 
         if module.fused_attn:
             x = F.scaled_dot_product_attention(q, k, v, mask, dropout_p)
@@ -160,7 +165,7 @@ class EoMT(nn.Module):
 
     def forward(self, x: torch.Tensor):
         x = self.backbone.patch_embed(x)
-        x = self.backbone._pos_embed(x)
+        x, rope = self.backbone._pos_embed(x)
         x = self.backbone.patch_drop(x)
         x = self.backbone.norm_pre(x)
 
@@ -211,7 +216,7 @@ class EoMT(nn.Module):
                 )
 
             x = x + block.drop_path1(
-                block.ls1(self._attn(block.attn, block.norm1(x), attn_mask))
+                block.ls1(self._attn(block.attn, block.norm1(x), attn_mask, rope))
             )
             x = x + block.drop_path2(block.ls2(block.mlp(block.norm2(x))))
 
