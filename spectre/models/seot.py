@@ -68,13 +68,13 @@ class SEoT(nn.Module):
     ):
         super().__init__()
         self.backbone = backbone
-        self.num_q = num_classes+1
+        self.num_q = num_classes
         self.num_blocks = num_blocks
         self.masked_attn_enabled = masked_attn_enabled
         self.upscale_output = upscale_output
         self.register_buffer("attn_mask_probs", torch.ones(num_blocks))
         self.for_nnunet = for_nnunet
-        self.q = nn.Embedding(num_classes+1, self.backbone.embed_dim)
+        self.q = nn.Embedding(num_classes, self.backbone.embed_dim)
 
         # self.class_head = nn.Linear(self.backbone.embed_dim, num_classes + 1)
 
