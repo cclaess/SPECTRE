@@ -38,6 +38,7 @@ class ScaleBlock(nn.Module):
         self.norm = LayerNorm3d(embed_dim)
 
     def forward(self, x):
+        # print(x.shape)
         x = self.conv1(x)
         x = self.act(x)
         x = self.conv2(x)
@@ -110,33 +111,15 @@ class SEoT(nn.Module):
         q = x[:, : self.num_q, :]
         # print(stage)
         # class_logits = self.class_head(q)
-
         x = x[:, self.num_q + self.backbone.num_prefix_tokens :, :]
         x = x.transpose(1, 2).reshape(
             x.shape[0], -1, *self.backbone.patch_embed.grid_size
         )
-
         mask_logits = torch.einsum(
             "bqc, bchwd -> bqhwd", self.mask_head(q), self.upscale(x)
         )
 
-        if self.upscale_output:
-            # Upscale to original input size / stage
-            if stage is not None:
-                input_size = tuple(
-                    int(self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim] / 2**(stage))
-                    for dim in range(len(self.backbone.patch_embed.patch_size))
-                )
-            else:
-                input_size = tuple(
-                    self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim]
-                    for dim in range(len(self.backbone.patch_embed.patch_size))
-                )
-            mask_logits = F.interpolate(mask_logits, input_size, mode="trilinear")
-        
-        # if for_nnunet swap depth to third dimension
-        if self.for_nnunet:
-            mask_logits = mask_logits.permute(0, 1, 4, 2, 3)
+
         return mask_logits
 
     @torch.compiler.disable
@@ -185,9 +168,11 @@ class SEoT(nn.Module):
         return x
 
     def forward(self, x: torch.Tensor):
-        if self.for_nnunet:
-            # swap depth to third dimension
-            x = x.permute(0, 1, 4, 2, 3)
+
+        if self.for_nnunet: # swap data order, will be incoming at czyx - cxyz
+            x = x.permute(0, 1, 3, 4, 2).contiguous()
+
+        self.backbone.patch_embed.set_input_size(x.shape[2:])
         x = self.backbone.patch_embed(x)
         x, rope = self.backbone._pos_embed(x)
         x = self.backbone.patch_drop(x)
@@ -205,8 +190,26 @@ class SEoT(nn.Module):
                 self.masked_attn_enabled
                 and i >= len(self.backbone.blocks) - self.num_blocks
             ):
-                mask_logits = self._predict(self.backbone.norm(x), len(self.backbone.blocks) -i )
-                mask_logits_per_layer.append(mask_logits)
+                mask_logits = self._predict(self.backbone.norm(x))
+
+                if self.for_nnunet:
+                     # swap back to czyx
+                    
+                    if self.upscale_output:
+                        # Upscale to original input size / stage
+
+                        stage = len(self.backbone.blocks) -i 
+                        if stage is not None:
+                            input_size = tuple(
+                                int(self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim] / 2**(stage))
+                                for dim in range(len(self.backbone.patch_embed.patch_size))
+                            )
+
+                        mask_logits_per_layer.append(F.interpolate(mask_logits, input_size, mode="trilinear").permute(0, 1, 4, 2, 3).contiguous())
+                    else:
+                        mask_logits_per_layer.append(mask_logits.permute(0, 1, 4, 2, 3).contiguous())
+                else:
+                    mask_logits_per_layer.append(mask_logits)
 
                 attn_mask = torch.ones(
                     x.shape[0],
@@ -242,7 +245,15 @@ class SEoT(nn.Module):
             x = x + block.drop_path2(block.ls2(block.mlp(block.norm2(x))))
 
         mask_logits = self._predict(self.backbone.norm(x))
-        mask_logits_per_layer.append(mask_logits)
+        if self.for_nnunet:
+            input_size = tuple(
+                                int(self.backbone.patch_embed.patch_size[dim] * self.backbone.patch_embed.grid_size[dim] / 2**0)
+                                for dim in range(len(self.backbone.patch_embed.patch_size))
+                            )
+            mask_logits_per_layer.append(F.interpolate(mask_logits, input_size, mode="trilinear").permute(0, 1, 4, 2, 3).contiguous())
+        else:
+            mask_logits_per_layer.append(mask_logits)
+
         if self.for_nnunet:
             # return in reversed order for deep supervision
             mask_logits_per_layer = mask_logits_per_layer[::-1]
@@ -261,13 +272,15 @@ if __name__ == "__main__":
         num_blocks=4,
         masked_attn_enabled=True,
         for_nnunet=True,
-        deep_supervision=False,
-
+        deep_supervision=True,
+        upscale_output=True,
     )
 
-    x = torch.randn(2, 1, 64, 128, 128)
+    x = torch.randn(2, 1, 384, 384, 160)
+    
     # x = torch.randn(2, 1, 128, 128, 64)
+    x = torch.randn(2, 1, 64, 128, 128)
+    x = torch.randn(2, 1, 64, 256, 256)
     out = model(x)
-    print(out.shape)
     for o in out:
         print(o.shape)
