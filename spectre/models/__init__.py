@@ -7,6 +7,7 @@ from .vision_transformer import (
     vit_base_patch32_128,
     vit_large_patch16_128,
     vit_large_patch32_128,
+    vit_large_patch16_256,
 )
 from .resnet import ResNet
 from .resnet import (
