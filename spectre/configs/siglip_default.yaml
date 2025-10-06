@@ -31,6 +31,9 @@ optim:
   warmup_epochs: 10
   freeze_backbone_epochs: 10  # -1 means fully freeze backbone
   min_lr: 1.0e-06
+  llrd_factor: 0.9
+  patch_embed_lr_mult: 0.2
+  projection_head_wd_mult: 1.0
   clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024
   adamw_beta1: 0.9

@@ -11,6 +11,7 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
     EnsureTyped,
     RandSpatialCropd,
+    RandFlipd,
     GridPatchd,
     SelectItemsd,
 )
@@ -74,6 +75,9 @@ class SigLIPTransform(Compose):
                 roi_size=image_size,
                 random_size=False,
             ),
+            RandFlipd(keys=("image",), spatial_axis=0, prob=0.5),
+            RandFlipd(keys=("image",), spatial_axis=1, prob=0.5),
+            RandFlipd(keys=("image",), spatial_axis=2, prob=0.5),
             GridPatchd(
                 keys=("image",), 
                 patch_size=sliding_window_size, 

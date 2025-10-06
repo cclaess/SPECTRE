@@ -23,7 +23,6 @@ from spectre.utils import (
     setup,
     get_dataloader,
     extended_collate_siglip,
-    extract_patches_non_overlapping,
     add_lora_adapters,
     load_state,
     save_state,
@@ -310,11 +309,11 @@ def main(cfg, accelerator: Accelerator):
                     param_group["weight_decay"] = cfg.optim.weight_decay * param_group.get("wd_mult", 1.0)
 
                 # Forward pass
-                # image_patches = extract_patches_non_overlapping(
-                #     batch['image'], patch_size=(128, 128, 64),
-                # )
                 image_embeddings, text_embeddings = model(
-                    batch["image"], batch['input_ids'], batch['attention_mask']
+                    images=batch["image"], 
+                    text_tokens=batch['input_ids'],
+                    image_grid_size=(3, 3, 4),  # hardcoded for 384x384x256 with 128x128x64 patches
+                    attention_mask=batch['attention_mask'],
                 )
 
                 loss, details = criterion(
@@ -334,8 +333,8 @@ def main(cfg, accelerator: Accelerator):
                             if p.requires_grad:
                                 p.grad = None
                 
-                unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
-                unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
+                unwrapped_model.projection_image.cancel_last_layer_gradients(epoch)
+                unwrapped_model.projection_text.cancel_last_layer_gradients(epoch)
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
