@@ -60,6 +60,8 @@ def main(args):
     pca = PCA(n_components=3)
     pca = pca.fit(flattened_fit)  # Fit PCA on the sampled reconstructions
 
+    del fit_recons, flattened_fit  # Free memory
+
     for reconstruction in reconstructions:
         embed_path = reconstruction / f"{args.embedding_type}.npy"
         if not embed_path.exists():
