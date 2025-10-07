@@ -599,6 +599,27 @@ def vit_base_patch16_128(
     if pretrained_weights is not None:
         return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
     return VisionTransformer(**kwargs)
+
+def vit_base_patch16_256(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Base model with 3D patch embedding, patch size [16, 16, 8] and input size [256, 256, 128].
+    """
+    kwargs = dict(
+        img_size=(256, 256, 128),
+        patch_size=(16, 16, 8),
+        embed_dim=768,
+        depth=12,
+        num_heads=8,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
     
 
 def vit_base_patch32_128(
