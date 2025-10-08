@@ -118,6 +118,10 @@ def main(args):
     df = pd.read_csv(args.csv_path)
     if "VolumeName" not in df.columns:
         raise ValueError("CSV must contain 'VolumeName'")
+    
+    # Filter out VolumeNames not ending in `_1.nii.gz`
+    df = df[df["VolumeName"].str.endswith("_1.nii.gz")]
+
     # build per-sample label-tuple
     label_tuples = build_label_tuples(df)
 
