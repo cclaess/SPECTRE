@@ -201,3 +201,38 @@ def extract_model_from_checkpoint_dinov2(checkpoint_path: str):
         torch.save(sub_state_dict, os.path.join(output_dir, filename))
     
     print(f"Components extracted to: {output_dir}")
+
+
+def extract_model_from_checkpoint_siglip(checkpoint_path: str):
+    # Load the checkpoint
+    checkpoint = torch.load(
+        checkpoint_path, 
+        weights_only=False, 
+        map_location="cpu",
+    )
+    
+    # Get model state dict
+    model_state = checkpoint.get("model", checkpoint)
+
+    # Create output folder
+    output_dir = str(checkpoint_path).replace(".pt", "")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Define the components to save
+    components = {
+        "backbone_image.pt": "backbone_image",
+        "backbone_text.pt": "backbone_text",
+        "feature_comb_image.pt": "feature_comb_image",
+        "projection_image.pt": "projection_image",
+        "projection_text.pt": "projection_text"
+    }
+
+    # Extract and save each component
+    for filename, key in components.items():
+        sub_state_dict = {k.replace(f"{key}.", ""): v for k, v in model_state.items() if k.startswith(key)}
+        if not sub_state_dict:
+            print(f"[WARNING] No parameters found for {key}, skipping...")
+            continue
+        torch.save(sub_state_dict, os.path.join(output_dir, filename))
+    
+    print(f"Components extracted to: {output_dir}")

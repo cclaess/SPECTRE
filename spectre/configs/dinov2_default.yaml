@@ -47,7 +47,7 @@ optim:
   koleo_loss_weight: 0.1
   ibot_loss_weight: 1.0
 model:
-  architecture: vit_base_patch16_128
+  architecture: vit_large_patch16_128
   pretrained_weights: null
   hidden_dim: 2048
   bottleneck_dim: 256
@@ -64,7 +64,7 @@ model:
   mask_ratio_max: 0.7
   mask_probability: 0.5
   ibot_seperate_head: true
-  freeze_last_layer: 1
+  freeze_last_layer: 0
   student_drop_path_rate: 0.3
   num_base_patches: 12
   num_local_views: 8

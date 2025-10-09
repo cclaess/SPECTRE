@@ -9,7 +9,7 @@ Addional resources:
 Hamamci et al., "Developing Generalist Foundation Models from a Multimodal Dataset for 3D Computed Tomography" (2024),
 https://arxiv.org/abs/2403.17834
 """
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -27,28 +27,18 @@ class SigLIP(nn.Module):
         image_embed_dim: int = 768,
         text_embed_dim: int = 1536,
         projection_dim: int = 512,
-        backbone_is_class_token: bool = False,
-        backbone_combine_features: bool = True,
-        feature_comb_is_class_token: bool = False,
-        feature_comb_combine_features: bool = True,
     ):
         super().__init__()
-        assert not backbone_is_class_token or not backbone_combine_features
-        assert not feature_comb_is_class_token or not feature_comb_combine_features
-        self.image_backbone = image_backbone
-        self.text_backbone = text_backbone
-        self.image_feature_comb = image_feature_comb
-        self.backbone_is_class_token = backbone_is_class_token
-        self.backbone_combine_features = backbone_combine_features
-        self.feature_comb_is_class_token = feature_comb_is_class_token
-        self.feature_comb_combine_features = feature_comb_combine_features
+        self.backbone_image = image_backbone
+        self.backbone_text = text_backbone
+        self.feature_comb_image = image_feature_comb
 
-        self.image_projection = SigLIPProjectionHead(
+        self.projection_image = SigLIPProjectionHead(
             input_dim=image_embed_dim,
             output_dim=projection_dim,
             freeze_last_layer=1,
         )
-        self.text_projection = SigLIPProjectionHead(
+        self.projection_text = SigLIPProjectionHead(
             input_dim=text_embed_dim,
             output_dim=projection_dim,
             freeze_last_layer=1,
@@ -58,6 +48,7 @@ class SigLIP(nn.Module):
         self,
         images: torch.Tensor,
         text_tokens: torch.Tensor,
+        image_grid_size: Optional[Tuple[int, int, int]] = None,
         attention_mask: Optional[torch.Tensor] = None,
     ):
         """
@@ -75,45 +66,31 @@ class SigLIP(nn.Module):
         images = images.view(B*N, C, H, W, D)
 
         # Compute image embeddings
-        image_embeddings = self.image_backbone(images)
-        if self.backbone_is_class_token:
-            image_embeddings = image_embeddings.view(B, N, -1)  # (batch, crops, embed_dim)
-        else:
-            image_embeddings = image_embeddings.view(B, N, image_embeddings.shape[1], -1)  # (batch, crops, patches, embed_dim)
-            if self.backbone_combine_features:
-                image_embeddings = torch.cat([
-                    image_embeddings[:, :, 0, :],  # class token
-                    image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
-                ], dim=2)  # (batch, crops, embed_dim)
-                torch.mean
-            else:
-                image_embeddings = image_embeddings[:, :, 0, :]
+        image_embeddings = self.backbone_image(images)
+        image_embeddings = image_embeddings.view(B, N, image_embeddings.shape[1], -1)
+        assert image_embeddings.shape[2] > 1, "Backbone must return class token and patch tokens"
 
-        if self.image_feature_comb is not None:
-            image_embeddings = self.image_feature_comb(image_embeddings) # (batch, embed_dim)
-            if self.feature_comb_combine_features:
-                image_embeddings = torch.cat([
-                    image_embeddings[:, 0, :],  # class token
-                    image_embeddings[:, 1:, :].mean(dim=1)  # mean of patch tokens
-                ], dim=1)
-            else:
-                if not self.feature_comb_is_class_token:
-                    image_embeddings = image_embeddings[:, 0, :]
-        else:
-            if self.feature_comb_combine_features:
-                image_embeddings = torch.cat([
-                    image_embeddings.max(dim=1).values,
-                    image_embeddings.mean(dim=1),
-                ], dim=1)
-            else:
-                image_embeddings = image_embeddings.max(dim=1)
+        image_embeddings = torch.cat([
+            image_embeddings[:, :, 0, :],  # class token
+            image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
+        ], dim=2)  # (batch, crops, embed_dim * 2)
 
-        image_embeddings = self.image_projection(image_embeddings) # (batch, embed_dim)
+        if self.feature_comb_image is not None:
+            image_embeddings = self.feature_comb_image(image_embeddings, grid_size=image_grid_size)
+            assert image_embeddings.shape[1] > 1, \
+                "Feature combination module must return class token and patch tokens"
+
+            image_embeddings = torch.cat([
+                image_embeddings[:, 0, :],  # class token
+                image_embeddings[:, 1:, :].mean(dim=1)  # mean of patch tokens
+            ], dim=1)
+
+        image_embeddings = self.projection_image(image_embeddings)
 
         # Compute text embeddings
-        text_embeddings = self.text_backbone(input_ids=text_tokens, attention_mask=attention_mask)
-        text_embeddings = self.text_projection(
+        text_embeddings = self.backbone_text(input_ids=text_tokens, attention_mask=attention_mask)
+        text_embeddings = self.projection_text(
             last_token_pool(text_embeddings.last_hidden_state, attention_mask)
-        ) # (batch, embed_dim)
+        )
 
         return image_embeddings, text_embeddings

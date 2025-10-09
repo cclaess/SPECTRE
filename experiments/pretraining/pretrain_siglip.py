@@ -1,11 +1,10 @@
 import os
-import random
+import time
 import argparse
 from itertools import chain
 from functools import partial
 
-import torch
-import numpy as np
+import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
 from safetensors import safe_open
@@ -24,11 +23,11 @@ from spectre.utils import (
     setup,
     get_dataloader,
     extended_collate_siglip,
-    extract_patches_non_overlapping,
     add_lora_adapters,
     load_state,
     save_state,
     cosine_warmup_schedule,
+    get_param_groups_with_decay,
 )
 
 
@@ -110,6 +109,12 @@ def main(cfg, accelerator: Accelerator):
             pretrained_weights=cfg.model.pretrained_weights,
             num_classes=0,
             global_pool='',
+            pos_embed="rope",
+            rope_kwargs={
+                "base": 1000.0,  # works for most 3D models
+                "rescale_coords": 2.0,  # s in [0.5, 2.0]
+            },
+            init_values=cfg.model.layer_scale_init_value,
         )
         image_backbone_embed_dim = image_backbone.embed_dim
     else:
@@ -118,13 +123,19 @@ def main(cfg, accelerator: Accelerator):
     if cfg.optim.freeze_backbone_epochs < 0:  # -1 means fully freeze backbone
         for n, p in image_backbone.named_parameters():
             p.requires_grad = False  # freeze image backbone
+        image_backbone.eval()
 
     if cfg.model.use_feature_comb:
         image_feature_comb = models.FeatureVisionTransformer(
-            num_patches=36,
             patch_dim=image_backbone_embed_dim * 2,  # cls token + avg pooling (C. Jose et al. 2024)
             num_classes=0,
             global_pool='',
+            pos_embed="rope",
+            rope_kwargs={
+                "base": 100.0,  # less patches -> slower rotation
+                "rescale_coords": 2.0,  # s in [0.5, 2.0]
+            },
+            init_values=cfg.model.layer_scale_init_value,
             embed_dim=cfg.model.feature_comb_embed_dim,
             depth=cfg.model.feature_comb_num_layers,
             num_heads=cfg.model.feature_comb_num_heads,
@@ -200,13 +211,14 @@ def main(cfg, accelerator: Accelerator):
     else:
         for n, p in text_backbone.named_parameters():
             p.requires_grad = False  # freeze text backbone
+            text_backbone.eval()
             accelerator.print(
                 "No LoRA adapters added to text backbone. All parameters are frozen."
             )
 
     # Initialize the SigLIP model
     if cfg.model.use_feature_comb:
-        image_embed_dim = cfg.model.feature_comb_embed_dim * 2
+        image_embed_dim = cfg.model.feature_comb_embed_dim * 2  # use cls token + avg pooling (C. Jose et al. 2024)
     else:
         image_embed_dim = image_backbone_embed_dim * 2
     model = SigLIP(
@@ -216,10 +228,6 @@ def main(cfg, accelerator: Accelerator):
         image_embed_dim=image_embed_dim,
         text_embed_dim=text_backbone_embed_dim,
         projection_dim=cfg.model.projection_dim,
-        backbone_is_class_token=False,  # backbone returns all tokens
-        backbone_combine_features=True,  # use cls token + avg pooling (C. Jose et al. 2024)
-        feature_comb_is_class_token=False,  # feature combiner returns all tokens
-        feature_comb_combine_features=True,  # use cls token + avg pooling (C. Jose et al. 2024)
     )
 
     # Intialize criterion
@@ -232,13 +240,25 @@ def main(cfg, accelerator: Accelerator):
     )
 
     # Initialize optimizer
+    param_groups = get_param_groups_with_decay(
+        model,
+        llrd_factor=cfg.optim.llrd_factor,
+        patch_embed_lr_mult=cfg.optim.patch_embed_lr_mult,
+        lora_lr_factor=1.0,  # use base lr for LoRA parameters
+    )
+    param_groups += get_param_groups_with_decay(
+        criterion,
+    )
+
     optimizer = AdamW(
-        chain(model.parameters(), criterion.parameters()),
+        param_groups,
         lr=cfg.optim.lr,
         betas=(cfg.optim.adamw_beta1, cfg.optim.adamw_beta2),
+        weight_decay=cfg.optim.weight_decay,
     )
 
     # Prepare model, data, and optimizer for training
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model, data_loader, criterion, optimizer = accelerator.prepare(
         model, data_loader, criterion, optimizer,
     )
@@ -265,13 +285,17 @@ def main(cfg, accelerator: Accelerator):
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
+    t0 = time.time()
     for epoch in range(start_epoch, cfg.optim.epochs):
-        model.train()
-        for batch in data_loader:
 
+        # Set epoch for shuffling
+        if hasattr(data_loader, "set_epoch"):
+            data_loader.set_epoch(epoch)  # accelerate will call sampler internally
+
+        for batch in data_loader:
             with accelerator.accumulate(model):
 
-                # Update learning rate
+                # Update learning rate and weight decay
                 lr = cosine_warmup_schedule(
                     global_step,
                     max_steps=total_num_steps,
@@ -281,14 +305,15 @@ def main(cfg, accelerator: Accelerator):
                     warmup_start_value=0.0,
                 )
                 for param_group in optimizer.param_groups:
-                    param_group["lr"] = lr
+                    param_group["lr"] = lr * param_group.get("lr_mult", 1.0)
+                    param_group["weight_decay"] = cfg.optim.weight_decay * param_group.get("wd_mult", 1.0)
 
                 # Forward pass
-                image_patches = extract_patches_non_overlapping(
-                    batch['image'], patch_size=(128, 128, 64),
-                )
                 image_embeddings, text_embeddings = model(
-                    image_patches, batch['input_ids'], batch['attention_mask']
+                    images=batch["image"], 
+                    text_tokens=batch['input_ids'],
+                    image_grid_size=(3, 3, 4),  # hardcoded for 384x384x256 with 128x128x64 patches
+                    attention_mask=batch['attention_mask'],
                 )
 
                 loss, details = criterion(
@@ -304,12 +329,12 @@ def main(cfg, accelerator: Accelerator):
                 # This is useful for freezing the backbone during the initial epochs
                 if 0 < cfg.optim.freeze_backbone_epochs > epoch:
                     for n, p in model.named_parameters():
-                        if "image_backbone" in n:
+                        if "backbone_image" in n:
                             if p.requires_grad:
                                 p.grad = None
                 
-                unwrapped_model.image_projection.cancel_last_layer_gradients(epoch)
-                unwrapped_model.text_projection.cancel_last_layer_gradients(epoch)
+                unwrapped_model.projection_image.cancel_last_layer_gradients(epoch)
+                unwrapped_model.projection_text.cancel_last_layer_gradients(epoch)
 
                 # Update model
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
@@ -318,12 +343,15 @@ def main(cfg, accelerator: Accelerator):
                 optimizer.step()
 
                 # Log loss, lr, and weight decay
+                step_time = time.time() - t0
+                t0 = time.time()
                 if global_step % cfg.train.log_freq == 0:
                     accelerator.print(
                         f"Epoch {epoch + 1}/{cfg.optim.epochs}, "
                         f"Step {global_step + 1}/{total_num_steps}, "
                         f"Loss: {loss.item():8f}, "
                         f"LR: {lr:.8f}, "
+                        f"Step Time: {step_time:.2f} sec"
                     )
                     accelerator.log(
                         {
@@ -334,6 +362,7 @@ def main(cfg, accelerator: Accelerator):
                             "bias": unwrapped_criterion.b.item(),
                             "epoch": epoch,
                             "lr": lr,
+                            "step_time": step_time,
                         },
                         step=global_step,
                     )
@@ -359,28 +388,21 @@ def main(cfg, accelerator: Accelerator):
                 # Update global step
                 global_step += 1
 
-        if accelerator.is_main_process:
+        save_state(
+            os.path.join(cfg.train.output_dir, "checkpoint.pt"),
+            epoch=epoch + 1,
+            model=unwrapped_model,
+            optimizer=optimizer,
+            criterion=criterion,
+        )
+        if (epoch + 1) % cfg.train.saveckp_freq == 0:
             save_state(
-                os.path.join(cfg.train.output_dir, "checkpoint.pt"),
+                os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
                 epoch=epoch + 1,
                 model=unwrapped_model,
                 optimizer=optimizer,
                 criterion=criterion,
-                torch_random_state=torch.random.get_rng_state(),
-                numpy_random_state=tuple(np.random.get_state()),
-                random_random_state=random.getstate(),
             )
-            if (epoch + 1) % cfg.train.saveckp_freq == 0:
-                save_state(
-                    os.path.join(cfg.train.output_dir, f"checkpoint_epoch={epoch + 1:04}.pt"),
-                    epoch=epoch + 1,
-                    model=unwrapped_model,
-                    optimizer=optimizer,
-                    criterion=criterion,
-                    torch_random_state=torch.random.get_rng_state(),
-                    numpy_random_state=tuple(np.random.get_state()),
-                    random_random_state=random.getstate(),
-                )
         accelerator.wait_for_everyone()
     
     # Make sure the trackers are finished before exiting

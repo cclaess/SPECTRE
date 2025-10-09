@@ -245,13 +245,11 @@ class FeatureVisionTransformer(nn.Module):
         if self.reg_token is not None:
             to_cat.append(self.reg_token.expand(x.shape[0], -1, -1))
 
-        if pos_embed is None and to_cat:
-            # only prefix tokens, no position embedding
-            x = torch.cat(to_cat + [x], dim=1)
         if self.no_embed_class:
             # deit-3, updated JAX (big vision)
             # position embedding does not overlap with class token, add then concat
-            x = x + pos_embed
+            if pos_embed is not None:
+                x = x + pos_embed
             if to_cat:
                 x = torch.cat(to_cat + [x], dim=1)
         else:
@@ -259,7 +257,8 @@ class FeatureVisionTransformer(nn.Module):
             # pos_embed has entry for class token, concat then add
             if to_cat:
                 x = torch.cat(to_cat + [x], dim=1)
-            x = x + pos_embed
+            if pos_embed is not None:
+                x = x + pos_embed
 
         return self.pos_drop(x), rope
 

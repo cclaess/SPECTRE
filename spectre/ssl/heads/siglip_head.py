@@ -10,7 +10,7 @@ class SigLIPProjectionHead(nn.Module):
     Whereas SigLIP originally used a single linear layer for the projection
     head, we use a 3-layer MLP to deal with the partially frozen image and
     text backbones. This is similar to the DINO projection head without l2
-    normalization (l2 normalization is performed in loss).
+    normalization (l2 normalization is performed in loss) and with LayerNorm.
 
     Attributes:
         input_dim:
@@ -64,11 +64,11 @@ class SigLIPProjectionHead(nn.Module):
 
         layers: List[nn.Module] = []
         for block in blocks:
-            in_dim, out_dim, bn, non_linearity, *bias = block
-            use_bias = bias[0] if bias else not bool(bn)
+            in_dim, out_dim, ln, non_linearity, *bias = block
+            use_bias = bias[0] if bias else not bool(ln)
             layers.append(nn.Linear(in_dim, out_dim, bias=use_bias))
-            if bn:
-                layers.append(bn)
+            if ln:
+                layers.append(ln)
             if non_linearity:
                 layers.append(non_linearity)
         self.layers = nn.Sequential(*layers)
@@ -97,7 +97,7 @@ class SigLIPProjectionHead(nn.Module):
             nn.init._no_grad_trunc_normal_(
                 module.weight,
                 mean=0,
-                std=0.2,
+                std=0.02,
                 a=-2,
                 b=2,
             )

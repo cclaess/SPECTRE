@@ -45,13 +45,21 @@ def get_args_parser():
         "--save_dir", type=str, default="embeddings", 
         help="Directory to save embeddings",
     )
+    parser.add_argument(
+        "--image_size", type=int, nargs=3, default=(512, 512, 384), 
+        help="Size of the 3D image (H, W, D)",
+    )
+    parser.add_argument(
+        "--patch_size", type=int, nargs=3, default=(128, 128, 64), 
+        help="Size of the 3D patches (H, W, D)",
+    )
 
     parser.add_argument(
-        "--architecture", type=str, default="vit_base_patch16_128", 
+        "--architecture", type=str, default="vit_large_patch16_128", 
         help="Model architecture for image backbone",
     )
     parser.add_argument(
-        "--feature_comb_embed_dim", type=int, default=768, 
+        "--feature_comb_embed_dim", type=int, default=1080, 
         help="Embedding dimension for image feature combiner",
     )
     parser.add_argument(
@@ -75,7 +83,7 @@ def get_args_parser():
         help="Use LoRA adapters for the text backbone",
     )
     parser.add_argument(
-        "--lora_r", type=int, default=32,
+        "--lora_r", type=int, default=16,
         help="Rank for LoRA adapters",
     )
     parser.add_argument(
@@ -143,24 +151,24 @@ def main(args):
         EnsureChannelFirstd(keys=("image",), channel_dim="no_channel"),
         ScaleIntensityRanged(
             keys=("image",), 
-            a_min=-150, 
-            a_max=250, 
+            a_min=-1000, 
+            a_max=1000, 
             b_min=0.0, 
             b_max=1.0, 
             clip=True
         ),
         Orientationd(keys=("image",), axcodes="RAS"),
         Spacingd(keys=("image",), pixdim=(0.5, 0.5, 1.0), mode=("bilinear",)),
-        ResizeWithPadOrCropd(keys=("image",), spatial_size=(512, 512, 384)),
+        ResizeWithPadOrCropd(keys=("image",), spatial_size=args.image_size),
         GridPatchd(
             keys=("image",),
-            patch_size=(128, 128, 64),
+            patch_size=args.patch_size,
             overlap=0.0,
         ),
     ]
     if do_text_backbone:
-        transform = Compose([
-            transform,
+        transform = Compose(
+            transform + [
             RandomReportTransformd(
                 keys=("findings", "impressions"),
                 keep_original_prob=1.0,
@@ -225,8 +233,10 @@ def main(args):
                 num_heads=args.feature_comb_num_heads,
                 pos_embed="rope",
                 rope_kwargs={
-                    "base": 1000.0,
-                })
+                    "base": 100.0,
+                },
+                init_values=1.0,  # Will be set otherwise if present in weights
+            )
 
             image_feature_comb.load_state_dict(
                 torch.load(
@@ -358,7 +368,11 @@ def main(args):
                         image_embeddings[:, :, 0, :],  # class token
                         image_embeddings[:, :, 1:, :].mean(dim=2)  # mean of patch tokens
                     ], dim=2)  # (batch, crops, embed_dim)
-                    image_embeddings = image_feature_comb(image_embeddings, grid_size=(3, 3, 4))
+                    grid_size = tuple(
+                        (args.image_size[i] // args.patch_size[i]) 
+                        for i in range(3)
+                    )  # (H, W, D)
+                    image_embeddings = image_feature_comb(image_embeddings, grid_size=grid_size)
                     save_embeddings(
                         image_embeddings[:, 0, :], 
                         [p / "image_feature_comb_cls.npy" for p in save_paths]
@@ -450,12 +464,5 @@ def save_images(images, save_paths):
 if __name__ == "__main__":
     
     parser = get_args_parser()
-    args = parser.parse_args([
-        "--data_dir", r"E:\Datasets\CT-RATE",
-        "--save_dir", r"E:\spectre\results\eval\embeddings_ct_rate\dinov2\vit-l (valiant-salad-785)",
-        "--architecture", "vit_large_patch16_128",
-        "--image_backbone_weights", r"E:\spectre\checkpoints\dinov2\vit-l (valient-salad-785)\checkpoint_epoch=0020\backbone_teacher.pt",
-        "--batch_size", "1",
-        "--num_workers", "1",
-    ])
+    args = parser.parse_args()
     main(args)

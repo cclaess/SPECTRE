@@ -1,10 +1,20 @@
-# 🌟 SPECTRE: Self-supervised Pretraining for CT Representation Extraction
+# 🌟 SPECTRE: cross-modal Self-supervised Pretraining for CT Representation Extraction  
 
-SPECTRE is a framework for training and evaluating **transformer-based foundation models for 3D Computed Tomography (CT) scans**, and provdes a set of pretrained CT foundation models open to the research community. By leveraging self-supervised learning, SPECTRE enables the extraction of rich and generalizable representations from medical imaging data, which can be fine-tuned for various downstream tasks such as segmentation, classification, and anomaly detection.
+SPECTRE is a **transformer-based foundation model for 3D Computed Tomography (CT) scans**, trained using **self-supervised learning** and **cross-modal vision–language alignment**. It provides rich and generalizable representations from medical imaging data, which can be fine-tuned for downstream tasks such as segmentation, classification, and anomaly detection.  
 
-SPECTRE has been trained on a large cohort of **open-source CT scans** of the **human abdomen and thorax**, as well as **paired scans with radiology reports**, enabling it to learn rich representations that generalize across different datasets and clinical settings.
+SPECTRE has been trained on a large cohort of **open-source CT scans** of the **human abdomen and thorax**, as well as **paired radiology reports**, enabling it to capture representations that generalize across datasets and clinical settings.  
 
-This repository provides tools for pretraining, fine-tuning, and evaluating these models, ensuring robust performance across different CT datasets.
+This repository provides pretrained SPECTRE models together with tools for fine-tuning and evaluation, ensuring robust performance across diverse CT datasets.
+
+## 🧠 Pretrained Models
+
+| Model Name                | Modality           | Pretraining Objective   | Model Weights     |
+|---------------------------|--------------------|-------------------------|-------------------|
+| **SPECTRE**               | **CT**             | **DINOv3 + SigLIP**     | **Link**          |
+| SPECTRE-ViT-Local         | CT (crops)         | DINOv3                  | Link              |
+| SPECTRE-ViT-Local         | CT (crops)         | DINOv3 + SigLIP         | Link              |
+| SPECTRE-ViT-Global        | CT                 | DINOv3 + SigLIP         | Link              |
+| Qwen3-Embedding-0.6B LoRA | Text (radiology)   | SigLIP                  | Link              |
 
 ## 📂 Repository Contents
 
@@ -61,13 +71,13 @@ To facilitate deployment and reproducibility, SPECTRE can be run using **Docker*
 ### **Building the Docker Image**
 First, ensure you have **Docker** installed. Then, navigate to the repository and build the image:
 ```bash
-docker build -t spectre-ct .
+docker build -t spectre .
 ```
 
 ### **Running Experiments Inside Docker**
 Once the image is built, you can start a container and execute scripts inside it. For example, to run a DINO pretraining experiment:
 ```bash
-docker run --gpus all --rm -v $(pwd):/app spectre-ct python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir $(pwd)/outputs/pretraining/dino/
+docker run --gpus all --rm -v $(pwd):/app spectre python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir $(pwd)/outputs/pretraining/dino/
 ```
 - `--gpus all` enables GPU acceleration if available.
 - `--rm` removes the container after execution.

@@ -25,20 +25,25 @@ train:
   log_grad_freq: 100
 optim:
   epochs: 100
-  base_lr: 0.0001
+  weight_decay: 0.01
+  base_lr: 0.001
   lr: 0.  # will be set after applying scaling rule
   warmup_epochs: 10
   freeze_backbone_epochs: 10  # -1 means fully freeze backbone
   min_lr: 1.0e-06
+  llrd_factor: 0.9
+  patch_embed_lr_mult: 0.2
+  projection_head_wd_mult: 1.0
   clip_grad_norm: 1.0
   scaling_rule: sqrt_wrt_1024
   adamw_beta1: 0.9
   adamw_beta2: 0.95
 model:
-  architecture: vit_base_patch16_128
+  architecture: vit_large_patch16_128
   pretrained_weights: null
+  layer_scale_init_value: 1e-3
   use_feature_comb: true
-  feature_comb_embed_dim: 768
+  feature_comb_embed_dim: 1080
   feature_comb_num_layers: 4
   feature_comb_num_heads: 12
   text_tokenizer: Qwen/Qwen3-Embedding-0.6B

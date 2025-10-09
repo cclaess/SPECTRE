@@ -131,7 +131,7 @@ class EoMT(nn.Module):
 
         return attn_mask
 
-    def _attn(self, module: 'Attention', x: torch.Tensor, mask: Optional[torch.Tensor], rope = None):
+    def _attn(self, module: 'Attention', x: torch.Tensor, mask: Optional[torch.Tensor], rope=None):
         B, N, C = x.shape
 
         q = module.q(x).reshape(B, N, module.num_heads, module.head_dim).permute(0, 2, 1, 3)
