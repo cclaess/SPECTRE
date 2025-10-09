@@ -9,12 +9,12 @@ import torch.nn as nn
 from timm.layers import PatchDropout, AttentionPoolLatent
 from timm.models.vision_transformer import LayerScale, DropPath, Mlp
 
-from spectre.models.layers import (
+from nnunetv2.SPECTRE.spectre.models.layers import (
     PatchEmbed, 
     Attention, 
     RotaryPositionEmbedding,
 )
-from spectre.utils import (
+from nnunetv2.SPECTRE.spectre.utils import (
     resample_abs_pos_embed, 
     feature_take_indices, 
     global_pool_nlc,
@@ -599,6 +599,27 @@ def vit_base_patch16_128(
     if pretrained_weights is not None:
         return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
     return VisionTransformer(**kwargs)
+
+def vit_base_patch16_256(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Base model with 3D patch embedding, patch size [16, 16, 8] and input size [256, 256, 128].
+    """
+    kwargs = dict(
+        img_size=(256, 256, 128),
+        patch_size=(16, 16, 8),
+        embed_dim=768,
+        depth=12,
+        num_heads=8,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
     
 
 def vit_base_patch32_128(
@@ -631,6 +652,27 @@ def vit_large_patch16_128(
     """
     kwargs = dict(
         img_size=(128, 128, 64),
+        patch_size=(16, 16, 8),
+        embed_dim=1080,
+        depth=24,
+        num_heads=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if pretrained_weights is not None:
+        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    return VisionTransformer(**kwargs)
+
+def vit_large_patch16_256(
+    pretrained_weights: Optional[str] = None, 
+    **kwargs
+) -> VisionTransformer:
+    """ViT-Large model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
+    """
+    kwargs = dict(
+        img_size=(256, 256, 128),
         patch_size=(16, 16, 8),
         embed_dim=1080,
         depth=24,

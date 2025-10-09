@@ -5,8 +5,10 @@ from .vision_transformer import (
     vit_small_patch16_128, 
     vit_base_patch16_128, 
     vit_base_patch32_128,
+    vit_base_patch16_256,
     vit_large_patch16_128,
     vit_large_patch32_128,
+    vit_large_patch16_256,
 )
 from .resnet import ResNet
 from .resnet import (
@@ -18,3 +20,4 @@ from .resnet import (
     resnext101,
 )
 from .eomt import EoMT
+from .seot import SEoT

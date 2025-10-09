@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spectre.utils import (
+from nnunetv2.SPECTRE.spectre.utils import (
     to_3tuple,
     resample_patch_embed, 
     Format, 

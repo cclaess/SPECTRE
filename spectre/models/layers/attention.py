@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.jit import Final
 from timm.layers import use_fused_attn
 
-from spectre.models.layers.rotary_pos_embed import rope_apply
+from nnunetv2.SPECTRE.spectre.models.layers.rotary_pos_embed import rope_apply
 
 
 class Attention(nn.Module):

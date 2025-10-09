@@ -7,9 +7,9 @@ import torch.nn as nn
 from timm.models.vision_transformer import Mlp
 from timm.layers import PatchDropout, AttentionPoolLatent
 
-from spectre.utils import  global_pool_nlc, to_3tuple, resample_abs_pos_embed
-from spectre.models.vision_transformer import Block
-from spectre.models.layers import RotaryPositionEmbedding
+from nnunetv2.SPECTRE.spectre.utils import  global_pool_nlc, to_3tuple, resample_abs_pos_embed
+from nnunetv2.SPECTRE.spectre.models.vision_transformer import Block
+from nnunetv2.SPECTRE.spectre.models.layers import RotaryPositionEmbedding
 
 
 class FeatureVisionTransformer(nn.Module):

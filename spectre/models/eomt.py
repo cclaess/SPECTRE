@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spectre.models.layers import LayerNorm3d
+from nnunetv2.SPECTRE.spectre.models.layers import LayerNorm3d
 
 
 class ScaleBlock(nn.Module):

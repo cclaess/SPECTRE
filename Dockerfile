@@ -13,10 +13,10 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the application code
-COPY spectre /app/spectre
-COPY experiments /app/experiments
-COPY scripts /app/scripts
-COPY tests /app/tests
+# COPY spectre /app/spectre
+# COPY experiments /app/experiments
+# COPY scripts /app/scripts
+# COPY tests /app/tests
 
 # Set the working directory
 WORKDIR /app

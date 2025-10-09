@@ -3,7 +3,7 @@ import math
 
 from omegaconf import OmegaConf
 
-from spectre.utils import distributed, utils
+from nnunetv2.SPECTRE.spectre.utils import distributed, utils
 
 
 def apply_scaling_rules_to_cfg(cfg):
