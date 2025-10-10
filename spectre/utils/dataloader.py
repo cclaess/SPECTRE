@@ -46,11 +46,11 @@ def get_dataloader(
     # Dataset configurations
     DATASET_CONFIGS = {
         "ct_rate": {"folder": "CT-RATE", "base_name": "CTRate",
-            "extra": {"include_reports": include_reports, "fraction": fraction}},
+            "extra": {"include_reports": include_reports}},
         "inspect": {"folder": "INSPECT", "base_name": "Inspect",
-            "extra": {"include_reports": include_reports, "fraction": fraction}},
+            "extra": {"include_reports": include_reports}},
         "merlin": {"folder": "MERLIN", "base_name": "Merlin",
-            "extra": {"include_reports": include_reports, "fraction": fraction}},
+            "extra": {"include_reports": include_reports}},
         "nlst": {"folder": "NLST", "base_name": "Nlst"},
         "amos": {"folder": "Amos", "base_name": "Amos"},
         "abdomen_atlas": {"folder": "AbdomenAtlas1.0Mini", "base_name": "AbdomenAtlas",
@@ -72,6 +72,7 @@ def get_dataloader(
         kwargs = {
             "data_dir": os.path.join(data_dir, folder),
             "transform": transform,
+            "fraction": fraction,
             **extra_args,
         }
 

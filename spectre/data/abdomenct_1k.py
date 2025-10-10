@@ -10,12 +10,19 @@ from spectre.data._base_datasets import PersistentDataset, GDSDataset
 def _initialize_dataset(
     data_dir: str,
     include_labels: bool = False,
+    fraction: float = 1.0,
 ) -> List[Dict[str, str]]:
     
-    image_paths = Path(data_dir).glob("Case*.nii.gz")
+    image_paths = sorted(Path(data_dir).glob("Case*.nii.gz"))
+
+    if 0. < fraction < 1.0:
+        n_keep = int(len(image_paths) * fraction)
+        image_paths = image_paths[:n_keep]
 
     if include_labels:
-        label_paths = Path(data_dir).glob(os.path.join("Mask", "Case*.nii.gz"))
+        label_paths = sorted(Path(data_dir).glob(os.path.join("Mask", "Case*.nii.gz")))
+        if 0. < fraction < 1.0:
+            label_paths = label_paths[:n_keep]
 
         data = [{
             "image": str(image_path),
@@ -32,9 +39,10 @@ class AbdomenCT1KDataset(Dataset):
         self, 
         data_dir: str, 
         include_labels: bool = False, 
-        transform: Callable = None
+        transform: Callable = None,
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_labels)
+        data = _initialize_dataset(data_dir, include_labels, fraction)
         super().__init__(data=data, transform=transform)
 
 
@@ -44,9 +52,10 @@ class AbdomenCT1KPersistentDataset(PersistentDataset):
         data_dir: str,
         cache_dir: str,
         include_labels: bool = False, 
-        transform: Callable = None
+        transform: Callable = None,
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_labels)
+        data = _initialize_dataset(data_dir, include_labels, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir)
 
 
@@ -58,6 +67,7 @@ class AbdomenCT1KGDSDataset(GDSDataset):
         device: int,
         include_labels: bool = False, 
         transform: Callable = None,
+        fraction: float = 1.0,
     ):
-        data = _initialize_dataset(data_dir, include_labels)
+        data = _initialize_dataset(data_dir, include_labels, fraction)
         super().__init__(data=data, transform=transform, cache_dir=cache_dir, device=device)
