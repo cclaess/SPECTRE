@@ -6,7 +6,7 @@
 
 SPECTRE is a **transformer-based foundation model for 3D Computed Tomography (CT) scans**, trained using **self-supervised learning** and **cross-modal vision–language alignment**. It provides rich and generalizable representations from medical imaging data, which can be fine-tuned for downstream tasks such as segmentation, classification, and anomaly detection.  
 
-SPECTRE has been trained on a large cohort of **open-source CT scans** of the **human abdomen and thorax**, as well as **paired radiology reports**, enabling it to capture representations that generalize across datasets and clinical settings.  
+SPECTRE has been trained on a large cohort of **open-source CT scans** of the **human abdomen and thorax**, as well as **paired radiology reports** and **Electronic Health Record data**, enabling it to capture representations that generalize across datasets and clinical settings.  
 
 This repository provides pretrained SPECTRE models together with tools for fine-tuning and evaluation, ensuring robust performance across diverse CT datasets.
 
