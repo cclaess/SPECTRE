@@ -37,7 +37,7 @@ def extended_collate_siglip(
     tokenizer: Optional[Callable] = None,
     tokenizer_padding: bool = True,
     tokenizer_truncation: bool = True,
-    tokenizer_max_length: int = 1024,
+    tokenizer_max_length: Optional[int] = 1024,
     return_filenames: bool = False
 ) -> dict:
     """

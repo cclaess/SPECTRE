@@ -15,3 +15,7 @@ tokenizers
 FlagEmbedding[finetune]
 peft
 loralib
+matplotlib
+seaborn
+scikit-learn
+umap-learn

@@ -80,7 +80,7 @@ class RandomReportTransformd(Randomizable, MapTransform):
                 if not isinstance(codes, list) or not codes or self._rand_state.get("drop_icd10", False):
                     continue
                 
-                num_codes = min(self.max_num_icd10, len(codes))
+                num_codes = len(codes) if self.max_num_icd10 < 0 else min(self.max_num_icd10, len(codes))
                 if len(codes) <= self.max_num_icd10:
                     selected_codes = codes
                 else:
