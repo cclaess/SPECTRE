@@ -345,7 +345,7 @@ def main(args):
         include_reports=do_text_backbone,
         transform=transform,
         subset="test",
-        fraction=1.0,  # Use full validation set
+        fraction=1.0,  # Use full test set
     )
     tokenizer = Qwen2TokenizerFast.from_pretrained(
         args.text_tokenizer) if do_text_backbone else None
