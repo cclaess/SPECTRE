@@ -26,7 +26,7 @@ from transformers import (
 import spectre.models as models
 from spectre.data import MerlinDataset
 from spectre.ssl.heads import SigLIPProjectionHead
-from spectre.transforms import RandomReportTransformd
+from spectre.transforms import RandomReportTransformd, LargestMultipleCenterCropd
 from spectre.utils import (
     extended_collate_siglip, 
     add_lora_adapters, 
@@ -447,12 +447,15 @@ def main(args):
         ),
         Orientationd(keys=("image",), axcodes="RAS"),
         Spacingd(keys=("image",), pixdim=(0.5, 0.5, 1.0), mode=("bilinear",)),
-        # ResizeWithPadOrCropd(keys=("image",), spatial_size=args.image_size),
+        LargestMultipleCenterCropd(
+            keys=("image",),
+            patch_size=args.patch_size,
+        ),
+    # ResizeWithPadOrCropd(keys=("image",), spatial_size=args.image_size),
         GridPatchd(
             keys=("image",),
             patch_size=args.patch_size,
             overlap=0.0,
-            pad_mode="constant",
         ),
     ]
     if do_text_backbone:
@@ -646,7 +649,7 @@ def main(args):
                 images_for_saving = images_for_saving.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
                 images_for_saving = images_for_saving.view(B, C, Hp * H, Wp * W, Dp * D)
                 save_images(
-                    images_for_saving, 
+                    batch["image"], 
                     [p / "image.npy" for p in save_paths]
                 )
                 images = batch["image"].view(B*N, C, H, W, D)  # Reshape to (B*N, C, H, W, D)
