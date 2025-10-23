@@ -632,11 +632,6 @@ def main(args):
 
         with torch.no_grad():
             if do_image_backbone:
-                # Save the images as numpy arrays
-                save_images(
-                    batch["image"], 
-                    [p / "image.npy" for p in save_paths]
-                )
 
                 grid_sizes, _ = compute_grid_and_resampled_size_batch(
                     batch["image"].data.meta
@@ -645,6 +640,15 @@ def main(args):
                 Hp, Wp, Dp = grid_sizes[0]  # Assuming all batch items have the same grid size
                 assert N == (Hp * Wp * Dp), \
                     f"Number of patches {N} does not match computed grid size {Hp}x{Wp}x{Dp}"
+                
+                # Save the images as numpy arrays
+                images_for_saving = batch["image"].view(B, Hp, Wp, Dp, C, H, W, D)
+                images_for_saving = images_for_saving.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
+                images_for_saving = images_for_saving.view(B, C, Hp * H, Wp * W, Dp * D)
+                save_images(
+                    images_for_saving, 
+                    [p / "image.npy" for p in save_paths]
+                )
                 images = batch["image"].view(B*N, C, H, W, D)  # Reshape to (B*N, C, H, W, D)
 
                 image_embeddings = image_backbone(images)
