@@ -20,7 +20,9 @@ class _DynamicCenterSpatialCrop(CenterSpatialCrop):
         if self.patch_size.ndim != 1:
             raise ValueError("patch_size must be a 1D sequence like (128,128,64)")
 
-    def __call__(self, img):
+    def __call__(self, img, lazy: bool | None = None):
+        lazy_ = self.lazy if lazy is None else lazy
+
         arr = np.asarray(img)
         n_spatial = self.patch_size.size
 
@@ -40,7 +42,7 @@ class _DynamicCenterSpatialCrop(CenterSpatialCrop):
         crop_size = np.where(crop_size == 0, spatial, crop_size)
         crop_size = tuple(int(x) for x in crop_size)
 
-        temp_cropper = CenterSpatialCrop(roi_size=crop_size, lazy=self.lazy)
+        temp_cropper = CenterSpatialCrop(roi_size=crop_size, lazy=lazy_)
         return temp_cropper(arr)
 
 
