@@ -106,7 +106,7 @@ def main(cfg, accelerator: Accelerator):
         and cfg.model.architecture.startswith("vit")
     ):
         image_backbone = getattr(models, cfg.model.architecture)(
-            pretrained_weights=cfg.model.pretrained_weights,
+            checkpoint_path_or_url=cfg.model.pretrained_weights,
             num_classes=0,
             global_pool='',
             pos_embed="rope",

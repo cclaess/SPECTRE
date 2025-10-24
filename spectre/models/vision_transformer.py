@@ -1,4 +1,6 @@
+import os
 from functools import partial
+from urllib.parse import urlparse
 from typing import (
     Tuple, Union, Callable, Sequence, 
     Literal, Optional, Type, Set, List,
@@ -522,21 +524,41 @@ class VisionTransformer(nn.Module):
     @classmethod
     def from_pretrained(
             cls,
-            checkpoint_path: str,
+            checkpoint_path_or_url: Union[str, os.PathLike],
             verbose: bool = True,
             **kwargs
     ) -> 'VisionTransformer':
-        """Load pretrained model weights."""
+        """Load pretrained model weights from a local path or a URL."""
         model = cls(**kwargs)
-        state_dict = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+
+        def _is_url(path: str) -> bool:
+            try:
+                parsed = urlparse(str(path))
+                return parsed.scheme in ('http', 'https')
+            except Exception:
+                return False
+
+        if _is_url(checkpoint_path_or_url):
+            if verbose:
+                print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
+            state_dict = torch.hub.load_state_dict_from_url(
+                checkpoint_path_or_url, map_location='cpu', weights_only=False, progress=verbose)
+        else:
+            local_path = os.fspath(checkpoint_path_or_url)
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Checkpoint file not found: {local_path}")
+        if verbose:
+            print(f"Loading checkpoint from local path: {local_path}")
+            state_dict = torch.load(local_path, map_location='cpu', weights_only=False)
+
         msg = model.load_state_dict(state_dict, strict=False)
         if verbose:
-            print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
+            print(f"Loaded pretrained weights with msg: {msg}")
         return model
 
 
 def vit_tiny_patch16_128(
-    pretrained_weights: Optional[str] = None, 
+    checkpoint_path_or_url: Optional[str] = None, 
     **kwargs
 ) -> VisionTransformer:
     """ViT-Tiny model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
@@ -552,13 +574,13 @@ def vit_tiny_patch16_128(
         norm_layer=nn.LayerNorm,
         **kwargs,
     )
-    if pretrained_weights is not None:
-        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url is not None:
+        return VisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
     return VisionTransformer(**kwargs)
 
 
 def vit_small_patch16_128(
-    pretrained_weights: Optional[str] = None, 
+    checkpoint_path_or_url: Optional[str] = None, 
     **kwargs
 ) -> VisionTransformer:
     """ViT-Small model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
@@ -574,13 +596,13 @@ def vit_small_patch16_128(
         norm_layer=nn.LayerNorm,
         **kwargs,
     )
-    if pretrained_weights is not None:
-        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url is not None:
+        return VisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
     return VisionTransformer(**kwargs)
 
 
 def vit_base_patch16_128(
-    pretrained_weights: Optional[str] = None, 
+    checkpoint_path_or_url: Optional[str] = None, 
     **kwargs
 ) -> VisionTransformer:
     """ViT-Base model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
@@ -596,13 +618,13 @@ def vit_base_patch16_128(
         norm_layer=nn.LayerNorm,
         **kwargs,
     )
-    if pretrained_weights is not None:
-        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url is not None:
+        return VisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
     return VisionTransformer(**kwargs)
     
 
 def vit_base_patch32_128(
-    pretrained_weights: Optional[str] = None, 
+    checkpoint_path_or_url: Optional[str] = None, 
     **kwargs
 ) -> VisionTransformer:
     """ViT-Base model with 3D patch embedding, patch size [32, 32, 16] and input size [128, 128, 64].
@@ -618,13 +640,13 @@ def vit_base_patch32_128(
         norm_layer=nn.LayerNorm,
         **kwargs,
     )
-    if pretrained_weights is not None:
-        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url is not None:
+        return VisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
     return VisionTransformer(**kwargs)
 
 
 def vit_large_patch16_128(
-    pretrained_weights: Optional[str] = None, 
+    checkpoint_path_or_url: Optional[str] = None, 
     **kwargs
 ) -> VisionTransformer:
     """ViT-Large model with 3D patch embedding, patch size [16, 16, 8] and input size [128, 128, 64].
@@ -640,13 +662,13 @@ def vit_large_patch16_128(
         norm_layer=nn.LayerNorm,
         **kwargs,
     )
-    if pretrained_weights is not None:
-        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url is not None:
+        return VisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
     return VisionTransformer(**kwargs)
 
 
 def vit_large_patch32_128(
-    pretrained_weights: Optional[str] = None, 
+    checkpoint_path_or_url: Optional[str] = None, 
     **kwargs
 ) -> VisionTransformer:
     """ViT-Large model with 3D patch embedding, patch size [32, 32, 16] and input size [128, 128, 64].
@@ -662,6 +684,6 @@ def vit_large_patch32_128(
         norm_layer=nn.LayerNorm,
         **kwargs,
     )
-    if pretrained_weights is not None:
-        return VisionTransformer.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url is not None:
+        return VisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
     return VisionTransformer(**kwargs)

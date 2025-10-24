@@ -206,7 +206,7 @@ def main(args):
             and args.architecture.startswith("vit")
         ):
             image_backbone = getattr(models, args.architecture)(
-                pretrained_weights=args.image_backbone_weights,
+                checkpoint_path_or_url=args.image_backbone_weights,
                 num_classes=0,
                 global_pool='',  # Return all tokens
                 pos_embed="rope",

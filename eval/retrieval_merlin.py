@@ -1,10 +1,8 @@
-#!/usr/bin/env python3
 import argparse
 from pathlib import Path
 from typing import List, Tuple
 
 import numpy as np
-import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
 

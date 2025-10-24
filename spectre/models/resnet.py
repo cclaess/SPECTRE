@@ -1,4 +1,6 @@
+import os
 import math
+from urllib.parse import urlparse
 from typing import Type, Any, Tuple, List, Optional, Union, Dict
 
 import torch
@@ -586,21 +588,42 @@ class ResNet(nn.Module):
     @classmethod
     def from_pretrained(
             cls,
-            checkpoint_path: str,
+            checkpoint_path_or_url: Union[str, os.PathLike],
             verbose: bool = True,
             **kwargs
     ) -> 'ResNet':
-        """Load pretrained model weights."""
+        """Load pretrained model weights from a local path or a URL."""
         model = cls(**kwargs)
-        state_dict = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+
+        def _is_url(path: str) -> bool:
+            try:
+                parsed = urlparse(str(path))
+                return parsed.scheme in ('http', 'https')
+            except Exception:
+                return False
+
+        if _is_url(checkpoint_path_or_url):
+            if verbose:
+                print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
+            state_dict = torch.hub.load_state_dict_from_url(
+                checkpoint_path_or_url, map_location='cpu', weights_only=False, progress=verbose)
+        else:
+            local_path = os.fspath(checkpoint_path_or_url)
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Checkpoint file not found: {local_path}")
+        if verbose:
+            print(f"Loading checkpoint from local path: {local_path}")
+            state_dict = torch.load(local_path, map_location='cpu', weights_only=False)
+
         msg = model.load_state_dict(state_dict, strict=False)
         if verbose:
-            print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
+            print(f"Loaded pretrained weights with msg: {msg}")
         return model
+
     
 
 def resnet18(
-    pretrained_weights: Optional[str] = None,
+    checkpoint_path_or_url: Optional[str] = None,
     **kwargs
 ) -> ResNet:
     """ResNet-18 model with 3D operations.
@@ -611,13 +634,13 @@ def resnet18(
         cardinality=1,
         **kwargs,
     )
-    if pretrained_weights:
-        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url:
+        return ResNet.from_pretrained(checkpoint_path_or_url, **kwargs)
     return ResNet(**kwargs)
 
 
 def resnet34(
-    pretrained_weights: Optional[str] = None,
+    checkpoint_path_or_url: Optional[str] = None,
     **kwargs
 ) -> ResNet:
     """ResNet-34 model with 3D operations.
@@ -628,13 +651,13 @@ def resnet34(
         cardinality=1,
         **kwargs,
     )
-    if pretrained_weights:
-        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url:
+        return ResNet.from_pretrained(checkpoint_path_or_url, **kwargs)
     return ResNet(**kwargs)
 
 
 def resnet50(
-    pretrained_weights: Optional[str] = None,
+    checkpoint_path_or_url: Optional[str] = None,
     **kwargs
 ) -> ResNet:
     """ResNet-50 model with 3D operations.
@@ -645,13 +668,13 @@ def resnet50(
         cardinality=1,
         **kwargs,
     )
-    if pretrained_weights:
-        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url:
+        return ResNet.from_pretrained(checkpoint_path_or_url, **kwargs)
     return ResNet(**kwargs)
 
 
 def resnet101(
-    pretrained_weights: Optional[str] = None,
+    checkpoint_path_or_url: Optional[str] = None,
     **kwargs
 ) -> ResNet:
     """ResNet-101 model with 3D operations.
@@ -662,13 +685,13 @@ def resnet101(
         cardinality=1,
         **kwargs,
     )
-    if pretrained_weights:
-        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url:
+        return ResNet.from_pretrained(checkpoint_path_or_url, **kwargs)
     return ResNet(**kwargs)
 
 
 def resnext50(
-    pretrained_weights: Optional[str] = None,
+    checkpoint_path_or_url: Optional[str] = None,
     **kwargs
 ) -> ResNet:
     """ResNeXt-50 model with 3D operations.
@@ -680,13 +703,13 @@ def resnext50(
         base_width=4,
         **kwargs,
     )
-    if pretrained_weights:
-        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url:
+        return ResNet.from_pretrained(checkpoint_path_or_url, **kwargs)
     return ResNet(**kwargs)
 
 
 def resnext101(
-    pretrained_weights: Optional[str] = None,
+    checkpoint_path_or_url: Optional[str] = None,
     **kwargs
 ) -> ResNet:
     """ResNeXt-101 model with 3D operations.
@@ -698,6 +721,6 @@ def resnext101(
         base_width=8,
         **kwargs,
     )
-    if pretrained_weights:
-        return ResNet.from_pretrained(pretrained_weights, **kwargs)
+    if checkpoint_path_or_url:
+        return ResNet.from_pretrained(checkpoint_path_or_url, **kwargs)
     return ResNet(**kwargs)

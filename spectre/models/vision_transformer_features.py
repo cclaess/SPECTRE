@@ -1,5 +1,7 @@
+import os
 import math
 from functools import partial
+from urllib.parse import urlparse
 from typing import Union, Callable, Literal, Optional, Type, Set, Tuple
 
 import torch
@@ -306,14 +308,122 @@ class FeatureVisionTransformer(nn.Module):
     @classmethod
     def from_pretrained(
             cls,
-            checkpoint_path: str,
+            checkpoint_path_or_url: Union[str, os.PathLike],
             verbose: bool = True,
             **kwargs
     ) -> 'FeatureVisionTransformer':
-        """Load pretrained model weights."""
+        """Load pretrained model weights from a local path or a URL."""
         model = cls(**kwargs)
-        state_dict = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+
+        def _is_url(path: str) -> bool:
+            try:
+                parsed = urlparse(str(path))
+                return parsed.scheme in ('http', 'https')
+            except Exception:
+                return False
+
+        if _is_url(checkpoint_path_or_url):
+            if verbose:
+                print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
+            state_dict = torch.hub.load_state_dict_from_url(
+                checkpoint_path_or_url, map_location='cpu', weights_only=False, progress=verbose)
+        else:
+            local_path = os.fspath(checkpoint_path_or_url)
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Checkpoint file not found: {local_path}")
+        if verbose:
+            print(f"Loading checkpoint from local path: {local_path}")
+            state_dict = torch.load(local_path, map_location='cpu', weights_only=False)
+
         msg = model.load_state_dict(state_dict, strict=False)
         if verbose:
-            print(f"Loaded pretrained weights from {checkpoint_path} with msg: {msg}")
+            print(f"Loaded pretrained weights with msg: {msg}")
         return model
+
+
+def feat_vit_tiny(
+    patch_dim,
+    checkpoint_path_or_url: Optional[str] = None,
+    **kwargs,
+) -> FeatureVisionTransformer:
+    """Feature ViT-Tiny model.
+    """
+    kwargs = dict(
+        patch_dim=patch_dim,
+        embed_dim=192,
+        depth=2,
+        num_heads=2,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if checkpoint_path_or_url is not None:
+        return FeatureVisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
+    return FeatureVisionTransformer(**kwargs)
+
+
+def feat_vit_small(
+    patch_dim,
+    checkpoint_path_or_url: Optional[str] = None,
+    **kwargs,
+) -> FeatureVisionTransformer:
+    """Feature ViT-Small model.
+    """
+    kwargs = dict(
+        patch_dim=patch_dim,
+        embed_dim=384,
+        depth=2,
+        num_heads=4,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if checkpoint_path_or_url is not None:
+        return FeatureVisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
+    return FeatureVisionTransformer(**kwargs)
+
+
+def feat_vit_base(
+    patch_dim,
+    checkpoint_path_or_url: Optional[str] = None,
+    **kwargs,
+) -> FeatureVisionTransformer:
+    """Feature ViT-Base model.
+    """
+    kwargs = dict(
+        patch_dim=patch_dim,
+        embed_dim=768,
+        depth=2,
+        num_heads=8,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if checkpoint_path_or_url is not None:
+        return FeatureVisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
+    return FeatureVisionTransformer(**kwargs)
+
+
+def feat_vit_large(
+    patch_dim,
+    checkpoint_path_or_url: Optional[str] = None,
+    **kwargs,
+) -> FeatureVisionTransformer:
+    """Feature ViT-Large model.
+    """
+    kwargs = dict(
+        patch_dim=patch_dim,
+        embed_dim=1080,
+        depth=4,
+        num_heads=12,
+        mlp_ratio=4,
+        qkv_bias=True,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    )
+    if checkpoint_path_or_url is not None:
+        return FeatureVisionTransformer.from_pretrained(checkpoint_path_or_url, **kwargs)
+    return FeatureVisionTransformer(**kwargs)

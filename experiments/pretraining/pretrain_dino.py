@@ -96,7 +96,7 @@ def main(cfg, accelerator: Accelerator):
         and cfg.model.architecture.startswith("vit")
     ):
         backbone = getattr(models, cfg.model.architecture)(
-            pretrained_weights=cfg.model.pretrained_weights,
+            checkpoint_path_or_url=cfg.model.pretrained_weights,
             num_classes=0,
             dynamic_img_size=True,
             pos_embed="rope",
@@ -113,7 +113,7 @@ def main(cfg, accelerator: Accelerator):
         or cfg.model.architecture.startswith("resnext")
     ):
         backbone = getattr(models, cfg.model.architecture)(
-            pretrained_weights=cfg.model.pretrained_weights,
+            checkpoint_path_or_url=cfg.model.pretrained_weights,
             num_classes=0,
             norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
         )
