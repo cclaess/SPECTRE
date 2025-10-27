@@ -135,10 +135,10 @@ def main(args):
         ax.set_ylim(y_min, y_max)
         if i == 0:
             ax.set_ylabel("UMAP 2", fontsize=24)
-            ax.legend(title="# abnormalities", fontsize=24, title_fontsize=24)
             ax.tick_params(labelsize=24)
         else:
             ax.tick_params(labelleft=False, left=False, labelsize=24)
+            ax.legend(title="# abnormalities", fontsize=24, title_fontsize=24, markerscale=5)
 
     plt.tight_layout()
 
