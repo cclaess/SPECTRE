@@ -129,16 +129,16 @@ def main(args):
                 )
 
         display_name = EMBEDDING_NAME_MAP.get(etype, etype)
-        ax.set_title(f"UMAP of {display_name} embeddings", fontsize=20)
-        ax.set_xlabel("UMAP 1", fontsize=18)
+        ax.set_title(f"{display_name} embeddings", fontsize=32)
+        ax.set_xlabel("UMAP 1", fontsize=24)
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
         if i == 0:
-            ax.set_ylabel("UMAP 2", fontsize=18)
-            ax.legend(title="# abnormalities", fontsize=14, title_fontsize=14)
-            ax.tick_params(labelsize=14)
+            ax.set_ylabel("UMAP 2", fontsize=24)
+            ax.legend(title="# abnormalities", fontsize=24, title_fontsize=24)
+            ax.tick_params(labelsize=24)
         else:
-            ax.tick_params(labelleft=False, left=False, labelsize=14)
+            ax.tick_params(labelleft=False, left=False, labelsize=24)
 
     plt.tight_layout()
 
