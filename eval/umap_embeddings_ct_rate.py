@@ -9,8 +9,8 @@ from umap import UMAP
 
 
 EMBEDDING_NAME_MAP = {
-    "image_projection": "image",
-    "text_projection": "text",
+    "image_projection": "Image",
+    "text_projection": "Text",
 }
 
 
