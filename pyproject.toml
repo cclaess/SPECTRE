@@ -64,7 +64,6 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["tests*", "experiments*", "preprocessing*", "eval*", "build*", "imgs*", "data*"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
