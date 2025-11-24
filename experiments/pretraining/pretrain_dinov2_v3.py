@@ -33,7 +33,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     Load arguments from config file. If argument is specified in command line, 
     it will override the value in config file.
     """
-    parser = argparse.ArgumentParser(description="Pretrain DINOv2")
+    parser = argparse.ArgumentParser(description="Pretrain DINOv2/DINOv3")
     parser.add_argument(
         "--config_file",
         type=str,
