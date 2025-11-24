@@ -9,8 +9,8 @@ from umap import UMAP
 
 
 EMBEDDING_NAME_MAP = {
-    "image_projection": "image",
-    "text_projection": "text",
+    "image_projection": "Image",
+    "text_projection": "Text",
 }
 
 
@@ -84,6 +84,12 @@ def main(args):
         embeddings[etype] = np.array(embeddings[etype])
         valid_rows[etype] = pd.DataFrame(valid_rows[etype]).reset_index(drop=True)
 
+    for etype in args.embedding_types:
+        print(f"Loaded embeddings for {etype}: {embeddings[etype].shape}")
+    print("Valid rows per embedding type:")
+    for etype in args.embedding_types:
+        print(f" - {etype}: {len(valid_rows[etype])}")
+
     # Fit UMAP to first embeddings
     umap = UMAP(n_neighbors=args.n_neighbors, n_components=2, random_state=42)
     umap = umap.fit(embeddings[args.embedding_types[0]])
@@ -123,16 +129,16 @@ def main(args):
                 )
 
         display_name = EMBEDDING_NAME_MAP.get(etype, etype)
-        ax.set_title(f"UMAP of {display_name} embeddings", fontsize=20)
-        ax.set_xlabel("UMAP 1", fontsize=18)
+        ax.set_title(f"{display_name} embeddings", fontsize=36)
+        ax.set_xlabel("UMAP 1", fontsize=28)
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
         if i == 0:
-            ax.set_ylabel("UMAP 2", fontsize=18)
-            ax.legend(title="# abnormalities", fontsize=14, title_fontsize=14)
-            ax.tick_params(labelsize=14)
+            ax.set_ylabel("UMAP 2", fontsize=28)
+            ax.tick_params(labelsize=24)
         else:
-            ax.tick_params(labelleft=False, left=False, labelsize=14)
+            ax.tick_params(labelleft=False, left=False, labelsize=24)
+            ax.legend(title="# abnormalities", fontsize=24, title_fontsize=28, markerscale=5)
 
     plt.tight_layout()
 

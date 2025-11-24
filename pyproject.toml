@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spectre"
+description = "SPECTRE: cross-modal self-supervised pretraining for CT representation extraction"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.8"
+
+authors = [
+	{ name = "Cris Claessens", email = "c.h.b.claessens@tue.nl" },
+    { name = "Christiaan Viviers", email = "c.g.a.viviers@tue.nl" }
+]
+
+license = "MIT"
+
+license-files = ["LICENSE"]
+
+classifiers = [
+	"Programming Language :: Python :: 3.8",
+	"Programming Language :: Python :: 3.9",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Operating System :: OS Independent",
+	"Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+keywords = ["medical", "ct", "self-supervised", "vision", "deep-learning"]
+
+dependencies = [
+	"torch",
+	"wandb",
+	"numpy",
+	"monai[all]",
+	"nibabel",
+	"SimpleITK",
+	"timm",
+	"scipy",
+	"pandas",
+	"openpyxl",
+	"accelerate",
+	"omegaconf",
+	"transformers",
+	"tokenizers",
+	"peft",
+	"loralib",
+	"matplotlib",
+	"seaborn",
+	"scikit-learn",
+	"umap-learn",
+]
+
+[project.urls]
+Homepage = "https://github.com/cclaess/SPECTRE"
+Source = "https://github.com/cclaess/SPECTRE"
+BugTracker = "https://github.com/cclaess/SPECTRE/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "dirty-tag"

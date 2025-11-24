@@ -27,6 +27,10 @@ def get_args_parser():
         "--txt_emb", type=str, default="text_projection",
         help="Filename (no .npy) of text embeddings"
     )
+    parser.add_argument(
+        "--ks", type=int, nargs="+", default=[5, 10, 50, 100],
+        help="Recall@K cutoffs (space separated), e.g. --ks 5 10 50"
+    )
     return parser
 
 
@@ -118,6 +122,10 @@ def main(args):
     df = pd.read_csv(args.csv_path)
     if "VolumeName" not in df.columns:
         raise ValueError("CSV must contain 'VolumeName'")
+    
+    # Filter out VolumeNames not ending in `_1.nii.gz`
+    df = df[df["VolumeName"].str.endswith("_1.nii.gz")]
+
     # build per-sample label-tuple
     label_tuples = build_label_tuples(df)
 
@@ -149,7 +157,7 @@ def main(args):
     sim_ti = cosine_similarity(txt_embs, img_embs)
     # ground truth: each text i matches image i
     gt = list(range(len(txt_ids)))
-    recall = recall_at_k(sim_ti, gt, ks=[5, 10, 50, 100])
+    recall = recall_at_k(sim_ti, gt, ks=args.ks)
     print("\n### Text→Image Recall@K ###")
     for k, v in recall.items():
         print(f" Recall@{k:3d}: {v:.4f}")

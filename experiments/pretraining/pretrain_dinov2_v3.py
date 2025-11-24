@@ -2,26 +2,28 @@ import os
 import time
 import argparse
 from itertools import chain
-from functools import partial
 
+import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from accelerate import Accelerator
 
 import spectre.models as models
-from spectre.ssl.frameworks import DINO
-from spectre.ssl.losses import DINOLoss
+from spectre.ssl.frameworks import DINOv2
+from spectre.ssl.losses import DINOLoss, KoLeoLoss, iBOTPatchLoss
 from spectre.ssl.transforms import DINOTransform
-from spectre.configs import default_config_dino
+from spectre.configs import default_config_dinov2
 from spectre.utils import (
     setup,
+    random_block_mask,
     update_momentum,
     get_dataloader,
     extended_collate_dino,
-    load_state, 
+    load_state,
     save_state,
-    cosine_schedule, 
+    cosine_schedule,
     cosine_warmup_schedule,
+    linear_warmup_schedule,
     get_param_groups_with_decay,
 )
 
@@ -31,11 +33,11 @@ def get_args_parser() -> argparse.ArgumentParser:
     Load arguments from config file. If argument is specified in command line, 
     it will override the value in config file.
     """
-    parser = argparse.ArgumentParser(description="Pretrain DINO")
+    parser = argparse.ArgumentParser(description="Pretrain DINOv2/DINOv3")
     parser.add_argument(
         "--config_file",
         type=str,
-        default="spectre/configs/dino_default.yaml",
+        default="spectre/configs/dinov2_default.yaml",
         help="path to config file",
     )
     parser.add_argument(
@@ -98,35 +100,31 @@ def main(cfg, accelerator: Accelerator):
         backbone = getattr(models, cfg.model.architecture)(
             checkpoint_path_or_url=cfg.model.pretrained_weights,
             num_classes=0,
-            dynamic_img_size=True,
+            pos_embed="rope",
+            rope_kwargs={
+                "base": 1000.0,  # works for most 3D models
+                "rescale_coords": 2.0,  # s in [0.5, 2.0]
+            },
+            init_values=cfg.model.layer_scale_init_value,
         )
         embed_dim = backbone.embed_dim
-    elif (
-        hasattr(models, cfg.model.architecture)
-        and cfg.model.architecture.startswith("resnet")
-        or cfg.model.architecture.startswith("resnext")
-    ):
-        backbone = getattr(models, cfg.model.architecture)(
-            checkpoint_path_or_url=cfg.model.pretrained_weights,
-            num_classes=0,
-            norm_layer=partial(nn.BatchNorm3d, track_running_stats=False),
-        )
-        embed_dim = backbone.num_features
     else:
         raise NotImplementedError(f"Model {cfg.model.architecture} not implemented.")
 
     # Initialize DINO model
-    model = DINO(
+    model = DINOv2(
         backbone,
         input_dim=embed_dim,
         hidden_dim=cfg.model.hidden_dim,
         bottleneck_dim=cfg.model.bottleneck_dim,
         output_dim=cfg.model.output_dim,
+        ibot_seperate_head=cfg.model.ibot_seperate_head,
+        student_drop_path_rate=cfg.model.student_drop_path_rate,
         freeze_last_layer=cfg.model.freeze_last_layer,
     )
 
     # Initialize criterion
-    criterion = DINOLoss(
+    criterion_dino = DINOLoss(
         output_dim=cfg.model.output_dim,
         warmup_teacher_temp=cfg.model.warmup_teacher_temp,
         teacher_temp=cfg.model.teacher_temp,
@@ -134,6 +132,13 @@ def main(cfg, accelerator: Accelerator):
         student_temp=cfg.model.student_temp,
         center_momentum=cfg.model.center_momentum,
     )
+    criterion_ibot = iBOTPatchLoss(
+        output_dim=cfg.model.output_dim,
+        teacher_temp=cfg.model.teacher_temp,
+        student_temp=cfg.model.student_temp,
+        center_momentum=cfg.model.center_momentum,
+    )
+    criterion_koleo = KoLeoLoss()
 
     # Initialize optimizer
     param_groups = get_param_groups_with_decay(
@@ -150,9 +155,11 @@ def main(cfg, accelerator: Accelerator):
 
     # Prepare model, data, and optimizer for training
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model, data_loader, criterion, optimizer = accelerator.prepare(
-        model, data_loader, criterion, optimizer,
-    )
+    model, data_loader, criterion_dino, criterion_ibot, criterion_koleo, \
+        optimizer = accelerator.prepare(
+            model, data_loader, criterion_dino,
+            criterion_ibot, criterion_koleo, optimizer,
+        )
     
     # Keep unwrapped model for easier access to individual components
     unwrapped_model = accelerator.unwrap_model(model)
@@ -163,7 +170,9 @@ def main(cfg, accelerator: Accelerator):
             os.path.join(cfg.train.output_dir, "checkpoint.pt"),
             model=unwrapped_model,
             optimizer=optimizer, 
-            criterion=criterion,
+            criterion_dino=criterion_dino, 
+            criterion_koleo=criterion_koleo,
+            criterion_ibot=criterion_ibot,
         )
         if start_epoch > 0:
             accelerator.print(f"Resuming training from epoch {start_epoch}.")
@@ -172,6 +181,7 @@ def main(cfg, accelerator: Accelerator):
     # Dataloader already per GPU so no need to divide by number of processes
     total_num_steps = cfg.optim.epochs * len(data_loader)
     warmup_num_steps = cfg.optim.warmup_epochs * len(data_loader)
+    warmup_teacher_temp_num_steps = cfg.model.warmup_teacher_temp_epochs * len(data_loader)
 
     # Start training
     global_step: int = start_epoch * len(data_loader)
@@ -212,40 +222,87 @@ def main(cfg, accelerator: Accelerator):
                     cfg.model.momentum_teacher,
                     cfg.model.momentum_teacher_end,
                 )
-                update_momentum(unwrapped_model.backbone_student, unwrapped_model.backbone_teacher, momentum)
-                update_momentum(unwrapped_model.head_student, unwrapped_model.head_teacher, momentum)
+                update_momentum(unwrapped_model.backbone_student.vit, unwrapped_model.backbone_teacher.vit, momentum)
+                update_momentum(unwrapped_model.head_student_dino, unwrapped_model.head_teacher_dino, momentum)
+                if cfg.model.ibot_seperate_head:
+                    update_momentum(unwrapped_model.head_student_ibot, unwrapped_model.head_teacher_ibot, momentum)
 
-                # Get the inputs
                 global_views = batch["global_views"]
                 local_views = batch["local_views"]
 
+                # Masking
+                B = global_views.shape[0]
+                sequence_length = unwrapped_model.backbone_teacher.sequence_length
+                num_prefix_tokens = unwrapped_model.backbone_teacher.vit.num_prefix_tokens
+                mask = global_views.new_zeros((B, sequence_length), dtype=torch.bool)
+
+                # Mask patches except for the cls token
+                H, W, D = unwrapped_model.backbone_teacher.vit.patch_embed.grid_size
+                assert H * W * D == sequence_length - num_prefix_tokens, \
+                    "Grid size does not match sequence length."
+                block_mask = random_block_mask(
+                    size=(B, H, W, D),
+                    batch_mask_ratio=cfg.model.mask_probability,
+                    min_image_mask_ratio=cfg.model.mask_ratio_min,
+                    max_image_mask_ratio=cfg.model.mask_ratio_max,
+                    device=mask.device,
+                )
+                mask[:, num_prefix_tokens:] = block_mask.flatten(start_dim=1)
+
                 # Forward pass
-                teacher_cls_out, student_cls_out = model(
+                teacher_cls_out, teacher_masked_out, student_cls_out, student_masked_out = model(
                     global_views=global_views,
                     local_views=local_views,
+                    mask=mask,
                 )
 
                 # Calculate the loss
-                loss = criterion(
+                teacher_temp = linear_warmup_schedule(
+                    step=global_step,
+                    warmup_steps=warmup_teacher_temp_num_steps,
+                    start_value=cfg.model.warmup_teacher_temp,
+                    end_value=cfg.model.teacher_temp,
+                )
+                dino_loss = criterion_dino(
                     teacher_out=teacher_cls_out.chunk(2, dim=0),
                     student_out=student_cls_out.chunk(2 + cfg.model.num_local_views, dim=0),
-                    epoch=epoch,
+                    teacher_temp=teacher_temp,
                 )
+                ibot_loss = criterion_ibot(
+                    teacher_out=teacher_masked_out,
+                    student_out=student_masked_out,
+                    mask=block_mask,
+                    teacher_temp=teacher_temp,
+                )
+                koleo_loss = sum(
+                    criterion_koleo(p) for p in \
+                        student_cls_out.chunk(2 + cfg.model.num_local_views, dim=0)[2:]
+                )
+
+                loss = cfg.optim.dino_loss_weight * dino_loss + \
+                    cfg.optim.ibot_loss_weight * ibot_loss + \
+                    cfg.optim.koleo_loss_weight * koleo_loss
 
                 # Backward pass
                 accelerator.backward(loss)
 
                 # Update model
+                student_heads = [unwrapped_model.head_student_dino]
+                if cfg.model.ibot_seperate_head:
+                    student_heads.append(unwrapped_model.head_student_ibot)
+
                 if cfg.optim.clip_grad_norm > 0 and accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(
                         chain(
-                            unwrapped_model.backbone_student.parameters(), 
-                            unwrapped_model.head_student.parameters(),
+                            unwrapped_model.backbone_student.parameters(),
+                            *[c.parameters() for c in student_heads]
                         ),
                         cfg.optim.clip_grad_norm
                     )
 
-                unwrapped_model.head_student.cancel_last_layer_gradients(epoch)
+                for head in student_heads:
+                    head.cancel_last_layer_gradients(epoch)
+
                 optimizer.step()
 
                 # Log loss, lr, and weight decay
@@ -259,11 +316,14 @@ def main(cfg, accelerator: Accelerator):
                         f"LR: {lr:.8f}, "
                         f"Weight Decay: {weight_decay:.8f}, "
                         f"Momentum: {momentum:.8f}, "
-                        f"Step Time: {step_time:.4f}s, "
+                        f"Step Time: {step_time:.3f}s"
                     )
                     accelerator.log(
                         {
                             "loss": loss.item(),
+                            "dino_loss": dino_loss.item(),
+                            "koleo_loss": koleo_loss.item(),
+                            "ibot_loss": ibot_loss.item(),
                             "epoch": epoch,
                             "lr": lr,
                             "weight_decay": weight_decay,
@@ -287,13 +347,12 @@ def main(cfg, accelerator: Accelerator):
                     accelerator.log({
                         f"gradients/{n}": v for n, v in gradients.items()
                     }, step=global_step)
-                
+
                 # Zero gradients
                 optimizer.zero_grad()
-                
+
                 # Update global step
                 global_step += 1
-                
 
         # Save checkpoint
         save_state(
@@ -301,7 +360,9 @@ def main(cfg, accelerator: Accelerator):
             epoch=epoch + 1,
             model=unwrapped_model,
             optimizer=optimizer,
-            criterion=criterion,
+            criterion_dino=criterion_dino,
+            criterion_koleo=criterion_koleo,
+            criterion_ibot=criterion_ibot,
         )
         if (epoch + 1) % cfg.train.saveckp_freq == 0:
             save_state(
@@ -309,10 +370,12 @@ def main(cfg, accelerator: Accelerator):
                 epoch=epoch + 1,
                 model=unwrapped_model,
                 optimizer=optimizer,
-                criterion=criterion,
+                criterion_dino=criterion_dino,
+                criterion_koleo=criterion_koleo,
+                criterion_ibot=criterion_ibot,
             )
         accelerator.wait_for_everyone()
-
+    
     # Make sure the trackers are finished before exiting
     accelerator.end_training()
 
@@ -320,5 +383,5 @@ def main(cfg, accelerator: Accelerator):
 if __name__ == "__main__":
     parser = get_args_parser()
     args = parser.parse_args()
-    cfg, accelerator = setup(args, default_config_dino)
+    cfg, accelerator = setup(args, default_config_dinov2)
     main(cfg, accelerator)

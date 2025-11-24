@@ -6,17 +6,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y git
 
 # Upgrade pip
-RUN pip install --upgrade pip
-
-# Copy and install Python dependencies
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip
 
 # Copy the application code
-COPY spectre /app/spectre
-COPY experiments /app/experiments
-COPY scripts /app/scripts
-COPY tests /app/tests
+COPY . /app
+
+# Install the application in editable mode
+RUN pip install --no-cache-dir -e /app
 
 # Set the working directory
 WORKDIR /app

@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 from functools import partial
+from typing import List, Dict, Optional, Tuple
 
 import torch
 import numpy as np
@@ -22,7 +23,7 @@ from transformers import (
 )
 
 import spectre.models as models
-from spectre.data import CTRateDataset
+from spectre.data import MerlinDataset
 from spectre.ssl.heads import SigLIPProjectionHead
 from spectre.transforms import RandomReportTransformd, LargestMultipleCenterCropd
 from spectre.utils import (
@@ -38,7 +39,7 @@ def get_args_parser():
     )
     parser.add_argument(
         "--data_dir", type=str, required=True, 
-        help="Directory to CT-RATE dataset",
+        help="Directory to MERLIN dataset",
     )
     parser.add_argument(
         "--save_dir", type=str, default="embeddings", 
@@ -122,6 +123,164 @@ def get_args_parser():
     return parser
 
 
+def _find_subsequence(haystack: List[int], needle: List[int]) -> Optional[int]:
+    """
+    Return the first index i where haystack[i:i+len(needle)] == needle, or None.
+    Works with lists of ints.
+    """
+    if not needle:
+        return None
+    hn = len(haystack)
+    nn = len(needle)
+    if nn > hn:
+        return None
+    # naive search (ok for typical token lengths)
+    for i in range(hn - nn + 1):
+        if haystack[i:i+nn] == needle:
+            return i
+    return None
+
+
+def split_batch_by_headers(
+    tokenizer,
+    batch_input_ids: torch.LongTensor,
+    batch_attention_mask: torch.LongTensor,
+    headers: List[str] = ["Findings:", "Impressions:", "ICD10:"],
+    output_pad: bool = False,
+    pad_token_id: Optional[int] = None,
+) -> Tuple[List[Dict[str, Optional[torch.LongTensor]]], Optional[Dict[str, torch.LongTensor]]]:
+    """
+    Split a batch of tokenized sequences into sections based on header tokens.
+
+    Args:
+        tokenizer: HuggingFace tokenizer (used only to encode the header strings).
+        batch_input_ids: (B, S) LongTensor from dataloader.
+        batch_attention_mask: (B, S) LongTensor.
+        headers: list of header strings in the order you expect them.
+        output_pad: if True, also return padded tensors for each section across the batch.
+        pad_token_id: token id to use for padding if output_pad True. If None, uses tokenizer.pad_token_id.
+
+    Returns:
+        per_example_sections: list of length B; each item is a dict with keys:
+            - "findings_ids", "findings_mask", "impressions_ids", "impressions_mask", "icd10_ids", "icd10_mask"
+            Each value is either a LongTensor (L,) or None if that section wasn't found.
+        padded_outputs (optional): dict mapping section name -> padded tensor (B, Lmax) if output_pad True,
+            and section_mask -> (B, Lmax). Otherwise None.
+    """
+    device = batch_input_ids.device
+    B = batch_input_ids.shape[0]
+
+    # Encode headers without special tokens
+    header_token_ids = {h: tokenizer(h, add_special_tokens=False)["input_ids"] for h in headers}
+    # Map header short names for output keys
+    header_keys = [h.rstrip(":").lower() for h in headers]  # e.g. "Findings:" -> "findings"
+
+    if output_pad:
+        padded = {}
+        for k in header_keys:
+            padded[f"{k}_ids"] = []
+            padded[f"{k}_mask"] = []
+    else:
+        padded = None
+
+    # choose pad token id
+    if output_pad and pad_token_id is None:
+        pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id or 0
+
+    per_example = []
+    for b in range(B):
+        input_ids = batch_input_ids[b].tolist()
+        attn = batch_attention_mask[b].tolist()
+
+        # compute actual seq length from attention_mask (ignore padded tokens)
+        seq_len = int(sum(attn))
+        if seq_len == 0:
+            # empty example (shouldn't happen), create empty sections
+            example = {f"{k}_ids": None for k in header_keys}
+            for k in header_keys:
+                example[f"{k}_mask"] = None
+            per_example.append(example)
+            if output_pad:
+                for k in header_keys:
+                    padded[f"{k}_ids"].append(torch.tensor([], dtype=torch.long))
+                    padded[f"{k}_mask"].append(torch.tensor([], dtype=torch.long))
+            continue
+
+        eof_id = tokenizer.eos_token_id or input_ids[seq_len - 1]  # last active token is assumed to be EOF/eos
+        
+        # active tokens excludes the EOF token (we will append it per section)
+        active_ids = input_ids[: seq_len - 1]  # exclude final eos token
+        active_mask = attn[: seq_len - 1]
+
+        # find header positions
+        found_positions = {}
+        for header in headers:
+            pos = _find_subsequence(active_ids, header_token_ids[header])
+            if pos is not None:
+                found_positions[header] = pos
+
+        sorted_headers = sorted(found_positions.items(), key=lambda x: x[1])  # [(header, pos), ...]
+
+        # create slices per header
+        example = {}
+        for header in headers:
+            key = header.rstrip(":").lower()
+            if header not in found_positions:
+                example[f"{key}_ids"] = None
+                example[f"{key}_mask"] = None
+                if output_pad:
+                    padded[f"{key}_ids"].append(torch.tensor([], dtype=torch.long))
+                    padded[f"{key}_mask"].append(torch.tensor([], dtype=torch.long))
+                continue
+
+            start = found_positions[header]
+            # next header start if any, otherwise to end of active_ids
+            next_pos_list = [pos for _, pos in sorted_headers if pos > start]
+            end = next_pos_list[0] if next_pos_list else len(active_ids)
+
+            # slice (this includes header tokens + content)
+            ids_slice = active_ids[start:end]
+            mask_slice = active_mask[start:end]
+
+            # append EOF token and a 1 in the attention mask to indicate end-of-sequence
+            ids_with_eof = ids_slice + [eof_id]
+            mask_with_eof = mask_slice + [1]
+
+            ids_t = torch.tensor(ids_with_eof, dtype=torch.long, device=device)
+            mask_t = torch.tensor(mask_with_eof, dtype=torch.long, device=device)
+
+            example[f"{key}_ids"] = ids_t
+            example[f"{key}_mask"] = mask_t
+
+            if output_pad:
+                padded[f"{key}_ids"].append(ids_t.cpu())
+                padded[f"{key}_mask"].append(mask_t.cpu())
+
+        per_example.append(example)
+
+    # If requested, convert padded lists into padded tensors (B, Lmax) per section
+    padded_outputs = None
+    if output_pad:
+        padded_outputs = {}
+        for k in header_keys:
+            ids_list: List[torch.Tensor] = padded[f"{k}_ids"]
+            mask_list: List[torch.Tensor] = padded[f"{k}_mask"]
+            # compute max length
+            max_len = max([t.numel() for t in ids_list], default=0)
+            # Prepare padded tensors
+            ids_padded = torch.full((B, max_len), pad_token_id, dtype=torch.long)
+            mask_padded = torch.zeros((B, max_len), dtype=torch.long)
+            for i, (ids_t, mask_t) in enumerate(zip(ids_list, mask_list)):
+                L = ids_t.numel()
+                if L > 0:
+                    ids_padded[i, :L] = ids_t
+                    mask_padded[i, :L] = mask_t
+            padded_outputs[f"{k}_ids"] = ids_padded.to(device)
+            padded_outputs[f"{k}_mask"] = mask_padded.to(device)
+
+    return per_example, padded_outputs
+
+
 def main(args):
     # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -169,6 +328,7 @@ def main(args):
             transform + [
             RandomReportTransformd(
                 keys=("findings", "impressions"),
+                max_num_icd10=-1,  # Use all ICD10 codes
                 keep_original_prob=1.0,
                 drop_prob=0.0,
                 allow_missing_keys=False,
@@ -178,23 +338,23 @@ def main(args):
         transform = Compose(transform)
 
     # Create dataset and dataloader
-    dataset = CTRateDataset(
+    dataset = MerlinDataset(
         data_dir=args.data_dir,
         include_reports=do_text_backbone,
         transform=transform,
-        subset="valid",
-        fraction=1.0,  # Use full validation set
+        subset="test",
+        fraction=1.0,  # Use full test set
     )
+    tokenizer = Qwen2TokenizerFast.from_pretrained(
+        args.text_tokenizer) if do_text_backbone else None
     dataloader = DataLoader(
         dataset, 
         batch_size=args.batch_size, 
         num_workers=args.num_workers,
         collate_fn=partial(
             extended_collate_siglip, 
-            tokenizer=Qwen2TokenizerFast.from_pretrained(
-                args.text_tokenizer,
-            ) if do_text_backbone else None,
-            tokenizer_max_length=4096,
+            tokenizer=tokenizer,
+            tokenizer_max_length=None,
             return_filenames=True,
         ),
     )
@@ -361,7 +521,6 @@ def main(args):
         if all_exist:
             continue  # Skip this batch
 
-
         with torch.no_grad():
             if do_image_backbone:
 
@@ -386,7 +545,7 @@ def main(args):
                 save_embeddings(
                     image_embeddings[:, 0].view(B, Hp, Wp, Dp, -1), 
                     [p / "image_backbone_cls.npy" for p in save_paths]
-                )  # Save the CLS token embeddings of shape ()
+                )  # Save the CLS token embeddings of shape (B, Hp, Wp, Dp, embed_dim)
                 save_embeddings(
                     image_embeddings[:, 1:].view(B, Hp, Wp, Dp, image_embeddings.shape[1] - 1, -1),
                     [p / "image_backbone_patch.npy" for p in save_paths]
@@ -420,22 +579,60 @@ def main(args):
                         )
                 
             if do_text_backbone:
-                text_embeddings = text_backbone(
+
+                input_ids = batch["input_ids"]
+                attention_mask = batch["attention_mask"]
+
+                _, padded = split_batch_by_headers(
+                    tokenizer=tokenizer,
+                    batch_input_ids=input_ids,
+                    batch_attention_mask=attention_mask,
+                    headers=["Findings:", "Impressions:", "ICD10:"],
+                    output_pad=True,
+                )
+
+                text_embeddings = last_token_pool(text_backbone(
                     input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"]
-                )
-                text_embeddings = last_token_pool(
-                    text_embeddings.last_hidden_state, batch["attention_mask"]
-                )
+                ).last_hidden_state, batch["attention_mask"])
+
+                text_embeddings_findings = last_token_pool(text_backbone(
+                    input_ids=padded["findings_ids"],
+                    attention_mask=padded["findings_mask"]
+                ).last_hidden_state, padded["findings_mask"])
+
+                text_embeddings_impressions = last_token_pool(text_backbone(
+                    input_ids=padded["impressions_ids"],
+                    attention_mask=padded["impressions_mask"]
+                ).last_hidden_state, padded["impressions_mask"])
+
                 save_embeddings(
                     text_embeddings, 
                     [p / "text_backbone.npy" for p in save_paths]
                 )
+                save_embeddings(
+                    text_embeddings_findings,
+                    [p / "text_backbone_findings.npy" for p in save_paths]
+                )
+                save_embeddings(
+                    text_embeddings_impressions,
+                    [p / "text_backbone_impressions.npy" for p in save_paths]
+                )
                 if do_text_projection:
                     text_embeddings = text_projection(text_embeddings)
+                    text_embeddings_findings = text_projection(text_embeddings_findings)
+                    text_embeddings_impressions = text_projection(text_embeddings_impressions)
                     save_embeddings(
                         text_embeddings, 
                         [p / "text_projection.npy" for p in save_paths]
+                    )
+                    save_embeddings(
+                        text_embeddings_findings,
+                        [p / "text_projection_findings.npy" for p in save_paths]
+                    )
+                    save_embeddings(
+                        text_embeddings_impressions,
+                        [p / "text_projection_impressions.npy" for p in save_paths]
                     )
 
 

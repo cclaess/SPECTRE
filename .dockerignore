@@ -1,0 +1,80 @@
+# Ignore VCS
+.git
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+*.egg
+
+# Virtualenvs / environment files
+.env
+.env.*
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+
+# Caches / test / coverage
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~ 
+.DS_Store
+Thumbs.db
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Data, models, logs, large artifacts (do NOT include training data or model weights in build context)
+data/
+datasets/
+raw_data/
+processed_data/
+models/
+checkpoints/
+logs/
+outputs/
+results/
+
+# Common ML artifacts
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.hdf5
+
+# Secrets / credentials / keys
+*.pem
+*.key
+*.crt
+credentials.json
+secrets.*
+aws_credentials
+gcloud/
+*.env.local
+
+# Containers / orchestration
+docker-compose.yml
+*.compose.*
+
+# Misc
+coverage/
+tmp/
+temp/
+.idea/
