@@ -1,109 +1,109 @@
-# 🌟 SPECTRE: cross-modal Self-supervised Pretraining for CT Representation Extraction  
+# **SPECTRE** - **S**elf-Supervised & Cross-Modal **P**r**e**training for **CT** **R**epresentation **E**xtraction  
 
 <p align="center">
    <img src="imgs/cover_image.png" alt="SPECTRE cover image" width="800"/>
 </p>
 
-SPECTRE is a **transformer-based foundation model for 3D Computed Tomography (CT) scans**, trained using **self-supervised learning** and **cross-modal vision–language alignment**. It provides rich and generalizable representations from medical imaging data, which can be fine-tuned for downstream tasks such as segmentation, classification, and anomaly detection.  
+SPECTRE is a **Transformer-based foundation model for 3D Computed Tomography (CT) scans**, trained using **self-supervised learning** (SSL) and **cross-modal vision–language alignment** (VLA). It provides rich and generalizable representations from medical imaging data, which can be fine-tuned for downstream tasks such as segmentation, classification, and anomaly detection.  
 
 SPECTRE has been trained on a large cohort of **open-source CT scans** of the **human abdomen and thorax**, as well as **paired radiology reports** and **Electronic Health Record data**, enabling it to capture representations that generalize across datasets and clinical settings.  
 
-This repository provides pretrained SPECTRE models together with tools for fine-tuning and evaluation, ensuring robust performance across diverse CT datasets.
+This repository provides pretrained SPECTRE models together with tools for fine-tuning and evaluation.
 
 ## 🧠 Pretrained Models
+The pretrained SPECTRE model can easily be imported as follows:
 
-| Model Name                | Input Modality     | Pretraining Objective   | Model Weights     |
-|---------------------------|--------------------|-------------------------|-------------------|
-| **SPECTRE**               | **CT**             | **DINOv3 + SigLIP**     | **Link**          |
-| SPECTRE-ViT-Local         | CT crops           | DINOv3                  | Link              |
-| SPECTRE-ViT-Local         | CT crops           | DINOv3 + SigLIP         | Link              |
-| SPECTRE-ViT-Global        | Embedded CT crops  | DINOv3 + SigLIP         | Link              |
-| Qwen3-Embedding-0.6B LoRA | Text (radiology)   | SigLIP                  | Link              |
+```python
+from spectre import SpectreImageFeatureExtractor, MODEL_CONFIGS
+import torch
+
+config = MODEL_CONFIGS['spectre-large-pretrained']
+model = SpectreImageFeatureExtractor.from_config(config)
+model.eval()
+
+# Dummy input: (batch, crops, channels, height, width, depth)
+x = torch.randn(1, 36, 1, 128, 128, 64)
+with torch.no_grad():
+    features = model(x)
+print("Features shape:", features.shape)
+```
+
+Alternatively, you can download the weights of the separate components through HuggingFace using the following links:
+
+| Architecture              | Input Modality     | Pretraining Objective   | Model Weights                                                                                                               |
+|---------------------------|--------------------|-------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| SPECTRE-ViT-Local         | CT crops           | SSL                     | [Link](https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_backbone_vit_large_patch16_128_no_vla.pt?download=true)  |
+| SPECTRE-ViT-Local         | CT crops           | SSL + VLA               | [Link](https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_backbone_vit_large_patch16_128.pt?download=true)         |
+| SPECTRE-ViT-Global        | Embedded CT crops  | VLA                     | [Link](https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_combiner_feature_vit_large.pt?download=true)             |
+| Qwen3-Embedding-0.6B LoRA | Text (radiology)   | VLA                     | [Link](https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_qwen3_embedding_0.6B_lora.pt?download=true)              |
 
 ## 📂 Repository Contents
 
 This repository is organized as follows:
 
-- 🚀 **`spectre/`** – Contains the core package, including:
+- 🚀 **`src/spectre/`** – Contains the core package, including:
   - Pretraining methods
   - Model architectures
-  - Data transformations
+  - Data handling and transformations
 
-- 🛠️ **`spectre/configs/`** – Stores configuration files for different training settings.
+- 🛠️ **`src/spectre/configs/`** – Stores configuration files for different training settings.
 
 - 🔬 **`experiments/`** – Includes Python scripts for running various pretraining and downstream experiments.
 
-- 📄 **`requirements.txt`** – Lists the dependencies required to run the project.
-
-- 🐳 **`Dockerfile`** – Defines the environment for running SPECTRE inside a container.
+- 🐳 **`Dockerfile`** – Defines the environment for running a local version of SPECTRE inside a container.
 
 ## ⚙️ Setting Up the Environment
 
-To get up and running with SPECTRE, follow these steps:
+To get up and running with SPECTRE, simply install our package using pip:
 
-1. Clone this repository to your local machine:
-   ```bash
-   git clone https://github.com/cclaess/SPECTRE.git
-   cd SPECTRE
-   ```
+```bash
+pip install spectre
+```
 
-2. Create a `.env` file in the root directory of the project.
+or install the latest updates directly from GitHub:
 
-3. Add your [Weights & Biases](https://wandb.ai/) API key to the `.env` file:
-   ```bash
-   WANDB_API_KEY=<your_api_key>
-   ```
-
-4. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## ⚡ Performing Pretraining
-...
-
-## 🧩 Performing Downstream Training
-...
-
-## 🧪 Testing Your Algorithms
-...
+```bash
+pip install git+https://github.com/cclaess/SPECTRE.git
+```
 
 ## 🐳 Building and Using Docker
 
-To facilitate deployment and reproducibility, SPECTRE can be run using **Docker**. This allows you to set up a fully functional environment without manually installing dependencies.
+To facilitate deployment and reproducibility, SPECTRE can be run using **Docker**. This allows you to set up a fully functional environment without manually installing dependencies using your own local copy of spectre.
 
 ### **Building the Docker Image**
-First, ensure you have **Docker** installed. Then, navigate to the repository and build the image:
+First, ensure you have **Docker** installed. Then, clone and navigate to the repository to build the image:
 ```bash
+git clone https://github.com/cclaess/SPECTRE
+cd SPECTRE
 docker build -t spectre .
 ```
 
 ### **Running Experiments Inside Docker**
 Once the image is built, you can start a container and execute scripts inside it. For example, to run a DINO pretraining experiment:
 ```bash
-docker run --gpus all --rm -v $(pwd):/app spectre python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir $(pwd)/outputs/pretraining/dino/
+docker run --gpus all --rm -v "$(pwd):/mnt" spectre python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir /mnt/outputs/pretraining/dino/
 ```
 - `--gpus all` enables GPU acceleration if available.
 - `--rm` removes the container after execution.
-- `-v $(pwd):/app` mounts the current directory inside the container.
-- `python3 experiments/pretraining/pretrain_dino.py --config_file spectre/configs/dino_default.yaml --output_dir $(pwd)/outputs/pretraining/dino/` runs the DINO pretraining script with the default configuration file and stores the models weights in an output folder.
+- `-v $(pwd):/mnt` mounts the current directory inside the container.
 
+## License
+- Code: MIT License — see `LICENSE` (permissive; commercial use permitted).
+- Pretrained model weights: CC-BY-NC-SA — non-commercial share-alike. The weights and any derivative models that include these weights are NOT cleared for commercial use. See `MODELS_LICENSE.md` for details and the precise license text.
+
+> Note: the pretrained weights are subject to the original dataset licenses. Users intending to use SPECTRE in clinical or commercial settings should verify dataset and model licensing and obtain any required permissions.
 
 ## 📜 Citation
-If you use SPECTRE in your research or wish to cite it, please use the following BibTeX entry:
+If you use SPECTRE in your research or wish to cite it, please use the following BibTeX entry of our preprint:
 ```
-@article{spectre2025,
-  title={Citation will be added upon publication},
-  author={},
-  journal={},
+@misc{claessens_scaling_2025,
+  title = {Scaling {Self}-{Supervised} and {Cross}-{Modal} {Pretraining} for {Volumetric} {CT} {Transformers}},
+  url = {http://arxiv.org/abs/2511.17209},
+  doi = {10.48550/arXiv.2511.17209},
+  author = {Claessens, Cris and Viviers, Christiaan and D'Amicantonio, Giacomo and Bondarev, Egor and Sommen, Fons van der},
   year={2025},
-  url={https://github.com/cclaess/SPECTRE}
 }
 ```
 
 ## 🤝 Acknowledgements
-This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We acknowledge the **open-source CT datasets** and **research, code, and packages** that made this research possible, including:
-- [**DINO**](https://arxiv.org/abs/2104.14294), [**DINOv2**](https://arxiv.org/abs/2304.07193), [**MAE**](https://arxiv.org/abs/2111.06377), & [**SigLIP**](https://arxiv.org/abs/2303.15343): Self-supervised vision and vision-language representation learning approaches that inspired this work.
-- [**timm**](https://timm.fast.ai/) & [**lightly**](https://docs.lightly.ai/self-supervised-learning/): Python libraries providing 2D PyTorch models (timm) and self-supervised learning methods (lightly), from which we adapted parts of the code for 3D.
-- [**CT-RATE & CT-CLIP**](https://arxiv.org/abs/2403.17834): A dataset of thoracic CT scans paired with radiology reports (CT-RATE) and a CT foundation model based on the CLIP framework trained on this dataset (CT-CLIP).
-- [**MERLIN**](https://arxiv.org/abs/2406.06512): A dataset of abdominal CT scans paired with radiology reports and ICD10 codes, along with a vision-language CT foundation model trained on this dataset.
+This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We especially acknowledge the [**timm**](https://timm.fast.ai/) & [**lightly**](https://docs.lightly.ai/self-supervised-learning/) Python libraries for providing 2D PyTorch models (timm) and object-oriented self-supervised learning methods (lightly), from which we adapted parts of the code for 3D.

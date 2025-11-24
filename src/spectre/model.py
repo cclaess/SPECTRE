@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 MODEL_CONFIGS = {
-    "spectre-small-distilled": {
+    "spectre-small": {
         "name": "spectre-small-distilled",
         "backbone": "vit_small_patch16_128",
         "backbone_checkpoint_path_or_url": None,
@@ -13,7 +13,7 @@ MODEL_CONFIGS = {
         "feature_combiner_kwargs": {},
         "description": "SPECTRE model with ViT-Small backbone and feature combiner.",
     },  # Distilled checkpoints will be added later
-    "spectre-base-distilled": {
+    "spectre-base": {
         "name": "spectre-base-distilled",
         "backbone": "vit_base_patch16_128",
         "backbone_checkpoint_path_or_url": None,
@@ -25,6 +25,16 @@ MODEL_CONFIGS = {
     },  # Distilled checkpoints will be added later
     "spectre-large": {
         "name": "spectre-large",
+        "backbone": "vit_large_patch16_128",
+        "backbone_checkpoint_path_or_url": None,
+        "backbone_kwargs": {},
+        "feature_combiner": "feat_vit_large",
+        "feature_combiner_checkpoint_path_or_url": None,
+        "feature_combiner_kwargs": {},
+        "description": "SPECTRE model with ViT-Large backbone and feature combiner.",
+    },
+    "spectre-large-pretrained": {
+        "name": "spectre-large-pretrained",
         "backbone": "vit_large_patch16_128",
         "backbone_checkpoint_path_or_url": "https://huggingface.co/cclaess/SPECTRE/blob/main/spectre_backbone_vit_large_patch16_128.pt",
         "backbone_kwargs": {
@@ -43,7 +53,7 @@ MODEL_CONFIGS = {
             "rope_kwargs": {"base": 100.0},
             "init_values": 1.0,
         },
-        "description": "SPECTRE model with ViT-Large backbone and feature combiner.",
+        "description": "Pretrained SPECTRE model with ViT-Large backbone and feature combiner.",
     }
 }
 
