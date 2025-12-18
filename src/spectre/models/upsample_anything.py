@@ -292,6 +292,7 @@ if __name__ == "__main__":
         ),
         "mask.nii.gz",
     )
+    torch.save(mask_out.squeeze(0).squeeze(0).cpu(), "upsampled_mask.pt")
     nib.save(
         nib.Nifti1Image(
             mask_out.squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8),
