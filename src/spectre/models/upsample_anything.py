@@ -246,8 +246,21 @@ if __name__ == "__main__":
     transform = transforms.Compose([
         transforms.LoadImaged(keys=("image", "mask")),
         transforms.EnsureChannelFirstd(keys=("image", "mask"), channel_dim="no_channel"),
+        transforms.ScaleIntensityRanged(
+            keys=("image",),
+            a_min=-1000,
+            a_max=1000,
+            b_min=0.0,
+            b_max=1.0,
+            clip=True,
+        ),
         transforms.Orientationd(keys=("image", "mask"), axcodes="RAS"),
-        transforms.RandWeightedCropd(keys=("image", "mask"), w_key="mask", spatial_size=(128, 128, 64), num_samples=1),
+        transforms.RandWeightedCropd(
+            keys=("image", "mask"), 
+            w_key="mask", 
+            spatial_size=(128, 128, 64), 
+            num_samples=1,
+        ),
         transforms.CopyItemsd(keys=("mask"), times=1, names=("mask_low_res")),
         transforms.Resized(keys=("mask_low_res"), spatial_size=(16, 16, 8), mode="nearest")
     ])
@@ -265,7 +278,7 @@ if __name__ == "__main__":
 
     nib.save(
         nib.Nifti1Image(
-            sample["image"].squeeze(0).cpu().numpy().astype(np.uint8),
+            (sample["image"] * 255).squeeze(0).cpu().numpy().astype(np.uint8),
             affine=np.eye(4),
         ),
         "image.nii.gz",
