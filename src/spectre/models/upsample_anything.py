@@ -292,7 +292,7 @@ if __name__ == "__main__":
     )
     nib.save(
         nib.Nifti1Image(
-            mask_out.squeeze(0).cpu().numpy().astype(np.uint8),
+            mask_out.squeeze(0).squeeze(0).cpu().numpy().astype(np.uint8),
             affine=np.eye(4),
         ),
         "upsampled_mask.nii.gz",
