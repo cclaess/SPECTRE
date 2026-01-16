@@ -24,6 +24,7 @@ from .resnet import (
     resnext101,
 )
 from .eomt import EoMT
+from .seomt import SEoMT
 from .upsample_anything import UPA
 
 __all__ = [
@@ -48,4 +49,5 @@ __all__ = [
     'resnext101',
     'EoMT',
     'UPA',
+    'SEoMT',
 ]
