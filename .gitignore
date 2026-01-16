@@ -185,3 +185,5 @@ wandb/
 *.pt
 *.ckpt
 *.pth
+
+data

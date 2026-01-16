@@ -14,15 +14,15 @@ authors = [
     { name = "Christiaan Viviers", email = "c.g.a.viviers@tue.nl" }
 ]
 
-license = "MIT"
-
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "LICENSE_MODELS"]
 
 classifiers = [
 	"Programming Language :: Python :: 3.8",
 	"Programming Language :: Python :: 3.9",
 	"Programming Language :: Python :: 3.10",
 	"Programming Language :: Python :: 3.11",
+	"License :: OSI Approved :: MIT License",
+    "License :: Creative Commons :: Attribution-NonCommercial-ShareAlike 4.0 International",
 	"Operating System :: OS Independent",
 	"Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -69,3 +69,4 @@ where = ["src"]
 [tool.setuptools_scm]
 version_scheme = "post-release"
 local_scheme = "dirty-tag"
+fallback_version = "0.1.0"
