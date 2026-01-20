@@ -122,6 +122,4 @@ If you use SPECTRE in your research or wish to cite it, please use the following
 ## 🤝 Acknowledgements
 This project builds upon prior work in self-supervised learning, medical imaging, and transformer-based representation learning. We especially acknowledge [**MONAI**](https://project-monai.github.io/) for their awesome framework and the [**timm**](https://timm.fast.ai/) & [**lightly**](https://docs.lightly.ai/self-supervised-learning/) Python libraries for providing 2D PyTorch models (timm) and object-oriented self-supervised learning methods (lightly), from which we adapted parts of the code for 3D.
 
-<p align="center">
-   <img src="imgs/cover_image.jpg" alt="SPECTRE cover image" width="600"/>
-</p>
+[![Star History Chart](https://api.star-history.com/svg?repos=cclaess/SPECTRE&type=Date)](https://star-history.com/#cclaess/SPECTRE&Date)
