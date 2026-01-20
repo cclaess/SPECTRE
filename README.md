@@ -1,24 +1,12 @@
 # SPECTRE - Self-Supervised & Cross-Modal Pretraining for CT Representation Extraction  
 
 <p align="center">
-  <a href="https://pypi.org/project/spectre-fm/">
-    <img alt="PyPI Version" src="https://img.shields.io/pypi/v/spectre-fm?style=flat-square&label=version" />
-  </a>
-  <a href="https://pypi.org/project/spectre-fm/">
-    <img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/spectre-fm?style=flat-square" />
-  </a>
-  <a href="https://pypi.org/project/spectre-fm/">
-    <img alt="Downloads per Month" src="https://img.shields.io/pypi/dm/spectre-fm?style=flat-square&label=downloads" />
-  </a>
-  <a href="https://github.com/cclaess/SPECTRE/blob/main/LICENSE">
-    <img alt="License" src="https://img.shields.io/github/license/cclaess/SPECTRE?style=flat-square" />
-  </a>
-  <a href="https://huggingface.co/cclaess/SPECTRE">
-    <img alt="Model weights" src="https://img.shields.io/badge/models-Hugging%20Face-yellow?style=flat-square" />
-  </a>
-  <a href="https://arxiv.org/abs/2511.17209">
-    <img alt="Paper" src="https://img.shields.io/badge/paper-arXiv-b31b1b?style=flat-square" />
-  </a>
+  <a href="https://pypi.org/project/spectre-fm/"><img alt="PyPI Version" src="https://img.shields.io/pypi/v/spectre-fm?style=flat-square&label=version" /></a>
+  <a href="https://pypi.org/project/spectre-fm/"><img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/spectre-fm?style=flat-square" /></a>
+  <a href="https://pypi.org/project/spectre-fm/"><img alt="Downloads per Month" src="https://img.shields.io/pypi/dm/spectre-fm?style=flat-square&label=downloads" /></a>
+  <a href="https://github.com/cclaess/SPECTRE/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/cclaess/SPECTRE?style=flat-square" /></a>
+  <a href="https://huggingface.co/cclaess/SPECTRE"><img alt="Model weights" src="https://img.shields.io/badge/models-Hugging%20Face-yellow?style=flat-square" /></a>
+  <a href="https://arxiv.org/abs/2511.17209"><img alt="Paper" src="https://img.shields.io/badge/paper-arXiv-b31b1b?style=flat-square" /></a>
 </p>
 
 <p align="center">
