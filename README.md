@@ -1,6 +1,27 @@
 # SPECTRE - Self-Supervised & Cross-Modal Pretraining for CT Representation Extraction  
 
 <p align="center">
+  <a href="https://pypi.org/project/spectre-fm/">
+    <img alt="PyPI Version" src="https://img.shields.io/pypi/v/spectre-fm?style=flat-square&label=version" />
+  </a>
+  <a href="https://pypi.org/project/spectre-fm/">
+    <img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/spectre-fm?style=flat-square" />
+  </a>
+  <a href="https://pypi.org/project/spectre-fm/">
+    <img alt="Downloads per Month" src="https://img.shields.io/pypi/dm/spectre-fm?style=flat-square&label=downloads" />
+  </a>
+  <a href="https://github.com/cclaess/SPECTRE/blob/main/LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/cclaess/SPECTRE?style=flat-square" />
+  </a>
+  <a href="https://huggingface.co/cclaess/SPECTRE">
+    <img alt="Model weights" src="https://img.shields.io/badge/models-Hugging%20Face-yellow?style=flat-square" />
+  </a>
+  <a href="https://arxiv.org/abs/2511.17209">
+    <img alt="Paper" src="https://img.shields.io/badge/paper-arXiv-b31b1b?style=flat-square" />
+  </a>
+</p>
+
+<p align="center">
    <img src="imgs/method_overview.jpg" alt="SPECTRE architecture and pretraining strategies" width="600"/>
 </p>
 
@@ -37,6 +58,10 @@ Alternatively, you can download the weights of the separate components through H
 | SPECTRE-ViT-Local         | CT crops           | SSL + VLA               | [Link](https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_backbone_vit_large_patch16_128.pt?download=true)         |
 | SPECTRE-ViT-Global        | Embedded CT crops  | VLA                     | [Link](https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_combiner_feature_vit_large.pt?download=true)             |
 | Qwen3-Embedding-0.6B LoRA | Text (radiology)   | VLA                     | [Link](https://huggingface.co/cclaess/SPECTRE/resolve/main/spectre_qwen3_embedding_0.6B_lora.pt?download=true)              |
+
+## 🩻 Segmentation (nnUNet)
+
+If you're looking for a nnUNet-based segmentation pipeline that uses SPECTRE as the backbone, see: https://github.com/cviviers/nnUNet
 
 ## 📂 Repository Contents
 
