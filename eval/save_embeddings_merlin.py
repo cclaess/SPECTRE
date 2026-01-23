@@ -120,6 +120,14 @@ def get_args_parser():
         "--num_workers", type=int, default=10, 
         help="Number of workers for the dataloader",
     )
+    parser.add_argument(
+        "--token-level-dropout", type=float, default=0.0,
+        help="Token-level dropout rate for text input",
+    )
+    parser.add_argument(
+        "--span-level-dropout", type=float, default=0.0,
+        help="Span-level dropout rate for text input",
+    )
     return parser
 
 
@@ -587,6 +595,43 @@ def main(args):
                     input_ids, 
                     [p / "text_input_ids.npy" for p in save_paths]
                 )
+                save_embeddings(
+                    attention_mask, 
+                    [p / "text_attention_mask.npy" for p in save_paths]
+                )
+
+                if args.token_level_dropout > 0.0:
+                    input_ids, attention_mask = token_level_dropout(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        tokenizer=tokenizer,
+                        drop_prob=args.token_level_dropout,
+                    )
+                    save_embeddings(
+                        input_ids,
+                        [p / f"text_input_ids_token_dropped_{args.token_level_dropout}.npy" for p in save_paths]
+                    )
+                    save_embeddings(
+                        attention_mask,
+                        [p / f"text_attention_mask_token_dropped_{args.token_level_dropout}.npy" for p in save_paths]
+                    )
+                elif args.span_level_dropout > 0.0:
+                    input_ids, attention_mask = span_level_dropout(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        tokenizer=tokenizer,
+                        span_prob=args.span_level_dropout,
+                        min_span=10,
+                        max_span=min(50, int(args.span_level_dropout * input_ids.size(1))),
+                    )
+                    save_embeddings(
+                        input_ids,
+                        [p / f"text_input_ids_span_dropped_{args.span_level_dropout}.npy" for p in save_paths]
+                    )
+                    save_embeddings(
+                        attention_mask,
+                        [p / f"text_attention_mask_span_dropped_{args.span_level_dropout}.npy" for p in save_paths]
+                    )
 
                 _, padded = split_batch_by_headers(
                     tokenizer=tokenizer,
@@ -597,9 +642,9 @@ def main(args):
                 )
 
                 text_embeddings = last_token_pool(text_backbone(
-                    input_ids=batch["input_ids"],
-                    attention_mask=batch["attention_mask"]
-                ).last_hidden_state, batch["attention_mask"])
+                    input_ids=input_ids,
+                    attention_mask=attention_mask
+                ).last_hidden_state, attention_mask)
 
                 text_embeddings_findings = last_token_pool(text_backbone(
                     input_ids=padded["findings_ids"],
@@ -687,6 +732,95 @@ def save_images(images, save_paths):
             save_path = save_path.with_suffix(".npy")
         
         np.save(save_path, img.cpu().numpy())
+
+
+def token_level_dropout(
+    input_ids: torch.Tensor,        # (B, C)
+    attention_mask: torch.Tensor,   # (B, C)
+    tokenizer,
+    drop_prob: float,
+):
+    if drop_prob <= 0.0:
+        return input_ids, attention_mask
+
+    B, C = input_ids.shape
+    device = input_ids.device
+
+    # Build special token mask: (B, C)
+    special_mask = torch.tensor(
+        [
+            tokenizer.get_special_tokens_mask(
+                input_ids[b].tolist(),
+                already_has_special_tokens=True,
+            )
+            for b in range(B)
+        ],
+        device=device,
+        dtype=torch.bool,
+    )
+
+    # Valid tokens = real tokens, not padding, not special
+    valid_mask = attention_mask.bool() & (~special_mask)
+
+    # Sample per-token dropout
+    drop_mask = (torch.rand((B, C), device=device) < drop_prob) & valid_mask
+
+    input_ids = input_ids.clone()
+    attention_mask = attention_mask.clone()
+
+    input_ids[drop_mask] = tokenizer.pad_token_id
+    attention_mask[drop_mask] = 0
+
+    return input_ids, attention_mask
+
+
+def span_level_dropout(
+    input_ids: torch.Tensor,        # (B, C)
+    attention_mask: torch.Tensor,   # (B, C)
+    tokenizer,
+    span_prob: float,
+    min_span: int = 10,
+    max_span: int = 50,
+):
+    if span_prob <= 0.0:
+        return input_ids, attention_mask
+
+    B, C = input_ids.shape
+    device = input_ids.device
+
+    input_ids = input_ids.clone()
+    attention_mask = attention_mask.clone()
+
+    for b in range(B):
+        i = 0
+        while i < C:
+            if (
+                attention_mask[b, i] == 0
+                or input_ids[b, i].item() in tokenizer.all_special_ids
+            ):
+                i += 1
+                continue
+
+            if torch.rand(1, device=device) < span_prob:
+                span_len = torch.randint(
+                    min_span, max_span + 1, (1,), device=device
+                ).item()
+                end = min(i + span_len, C)
+
+                for j in range(i, end):
+                    if (
+                        attention_mask[b, j] == 0
+                        or input_ids[b, j].item() in tokenizer.all_special_ids
+                    ):
+                        break
+                    input_ids[b, j] = tokenizer.pad_token_id
+                    attention_mask[b, j] = 0
+
+                i = end
+            else:
+                i += 1
+
+    return input_ids, attention_mask
 
 
 if __name__ == "__main__":
