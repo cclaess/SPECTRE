@@ -808,6 +808,7 @@ def token_level_dropout(
                 for i in range(C - header_len + 1):
                     if ids_list[i:i+header_len] == header_ids:
                         header_mask[b, i:i+header_len] = True
+                        print(f"DEBUG token_level_dropout: Found header '{header}' (tokens {header_ids}) at position {i}")
 
     # Valid tokens = real tokens, not padding, not special, not headers
     valid_mask = attention_mask.bool() & (~special_mask) & (~header_mask)
@@ -858,6 +859,7 @@ def span_level_dropout(
                 for i in range(C - header_len + 1):
                     if ids_list[i:i+header_len] == header_ids:
                         header_mask[b, i:i+header_len] = True
+                        print(f"DEBUG span_level_dropout: Found header '{header}' (tokens {header_ids}) at position {i}")
 
     input_ids = input_ids.clone()
     attention_mask = attention_mask.clone()
