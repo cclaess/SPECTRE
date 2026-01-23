@@ -606,6 +606,7 @@ def main(args):
                         attention_mask=attention_mask,
                         tokenizer=tokenizer,
                         drop_prob=args.token_level_dropout,
+                        protected_headers=["Findings:", "Impressions:", "ICD10:"],
                     )
                     save_embeddings(
                         input_ids,
@@ -622,6 +623,7 @@ def main(args):
                         tokenizer=tokenizer,
                         span_prob=args.span_level_dropout,
                         min_span=10,
+                        protected_headers=["Findings:", "Impressions:", "ICD10:"],
                         max_span=min(50, int(args.span_level_dropout * input_ids.size(1))),
                     )
                     save_embeddings(
@@ -739,6 +741,7 @@ def token_level_dropout(
     attention_mask: torch.Tensor,   # (B, C)
     tokenizer,
     drop_prob: float,
+    protected_headers: List[str] = None,
 ):
     if drop_prob <= 0.0:
         return input_ids, attention_mask
@@ -759,8 +762,23 @@ def token_level_dropout(
         dtype=torch.bool,
     )
 
-    # Valid tokens = real tokens, not padding, not special
-    valid_mask = attention_mask.bool() & (~special_mask)
+    # Build header protection mask: (B, C)
+    header_mask = torch.zeros((B, C), device=device, dtype=torch.bool)
+    if protected_headers:
+        for header in protected_headers:
+            header_ids = tokenizer(header, add_special_tokens=False)["input_ids"]
+            header_len = len(header_ids)
+            if header_len == 0:
+                continue
+            # Find all occurrences of this header in each sequence
+            for b in range(B):
+                ids_list = input_ids[b].tolist()
+                for i in range(C - header_len + 1):
+                    if ids_list[i:i+header_len] == header_ids:
+                        header_mask[b, i:i+header_len] = True
+
+    # Valid tokens = real tokens, not padding, not special, not headers
+    valid_mask = attention_mask.bool() & (~special_mask) & (~header_mask)
 
     # Sample per-token dropout
     drop_mask = (torch.rand((B, C), device=device) < drop_prob) & valid_mask
@@ -781,12 +799,28 @@ def span_level_dropout(
     span_prob: float,
     min_span: int = 10,
     max_span: int = 50,
+    protected_headers: List[str] = None,
 ):
     if span_prob <= 0.0:
         return input_ids, attention_mask
 
     B, C = input_ids.shape
     device = input_ids.device
+
+    # Build header protection mask: (B, C)
+    header_mask = torch.zeros((B, C), device=device, dtype=torch.bool)
+    if protected_headers:
+        for header in protected_headers:
+            header_ids = tokenizer(header, add_special_tokens=False)["input_ids"]
+            header_len = len(header_ids)
+            if header_len == 0:
+                continue
+            # Find all occurrences of this header in each sequence
+            for b in range(B):
+                ids_list = input_ids[b].tolist()
+                for i in range(C - header_len + 1):
+                    if ids_list[i:i+header_len] == header_ids:
+                        header_mask[b, i:i+header_len] = True
 
     input_ids = input_ids.clone()
     attention_mask = attention_mask.clone()
@@ -797,6 +831,7 @@ def span_level_dropout(
             if (
                 attention_mask[b, i] == 0
                 or input_ids[b, i].item() in tokenizer.all_special_ids
+                or header_mask[b, i]
             ):
                 i += 1
                 continue
@@ -811,6 +846,7 @@ def span_level_dropout(
                     if (
                         attention_mask[b, j] == 0
                         or input_ids[b, j].item() in tokenizer.all_special_ids
+                        or header_mask[b, j]
                     ):
                         break
                     input_ids[b, j] = tokenizer.pad_token_id
