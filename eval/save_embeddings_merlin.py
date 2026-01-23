@@ -645,6 +645,18 @@ def main(args):
                     output_pad=True,
                 )
 
+                # Debug: Check for zero-length sequences
+                for section_name in ["findings", "impressions", "icd10"]:
+                    if padded[f"{section_name}_ids"].shape[1] == 0:
+                        print(f"WARNING: {section_name} section has zero length!")
+                        print(f"Batch filenames: {filenames}")
+                        print(f"Input IDs shape: {input_ids.shape}")
+                        print(f"Attention mask sum per sample: {attention_mask.sum(dim=1).tolist()}")
+                        print(f"Checking for headers in tokenized sequence...")
+                        for b in range(input_ids.shape[0]):
+                            seq = tokenizer.decode(input_ids[b])
+                            print(f"Sample {b} ({filenames[b]}): {seq[:500]}")
+
                 text_embeddings = last_token_pool(text_backbone(
                     input_ids=input_ids,
                     attention_mask=attention_mask
