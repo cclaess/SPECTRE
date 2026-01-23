@@ -600,27 +600,12 @@ def main(args):
                     [p / "text_attention_mask.npy" for p in save_paths]
                 )
 
-                # Debug: Print original sequence before dropout
-                print(f"\n=== BEFORE DROPOUT ===")
-                print(f"Filenames: {filenames}")
-                for b in range(input_ids.shape[0]):
-                    seq = tokenizer.decode(input_ids[b][attention_mask[b].bool()])
-                    print(f"Sample {b}: {seq[:800]}")
-                    # Check if headers are in the sequence
-                    for header in ["Findings:", "Impressions:", "ICD10:"]:
-                        header_ids = tokenizer(header, add_special_tokens=False)["input_ids"]
-                        ids_list = input_ids[b].tolist()
-                        found = any(ids_list[i:i+len(header_ids)] == header_ids for i in range(len(ids_list) - len(header_ids) + 1))
-                        print(f"  {header} found: {found} (tokens: {header_ids})")
-
                 if args.token_level_dropout > 0.0:
                     input_ids, attention_mask = token_level_dropout(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
                         tokenizer=tokenizer,
                         drop_prob=args.token_level_dropout,
-                        protected_headers=["Findings:", "Impressions:", "ICD10:"],
-                        seed=42,
                     )
                     save_embeddings(
                         input_ids,
@@ -637,8 +622,6 @@ def main(args):
                         tokenizer=tokenizer,
                         span_prob=args.span_level_dropout,
                         min_span=10,
-                        protected_headers=["Findings:", "Impressions:", "ICD10:"],
-                        seed=42,
                         max_span=min(50, int(args.span_level_dropout * input_ids.size(1))),
                     )
                     save_embeddings(
@@ -650,69 +633,64 @@ def main(args):
                         [p / f"text_attention_mask_span_dropped_{args.span_level_dropout}.npy" for p in save_paths]
                     )
 
-                _, padded = split_batch_by_headers(
-                    tokenizer=tokenizer,
-                    batch_input_ids=input_ids,
-                    batch_attention_mask=attention_mask,
-                    headers=["Findings:", "Impressions:", "ICD10:"],
-                    output_pad=True,
-                )
-
-                # Debug: Check for zero-length sequences
-                for section_name in ["findings", "impressions", "icd10"]:
-                    if padded[f"{section_name}_ids"].shape[1] == 0:
-                        print(f"WARNING: {section_name} section has zero length!")
-                        print(f"Batch filenames: {filenames}")
-                        print(f"Input IDs shape: {input_ids.shape}")
-                        print(f"Attention mask sum per sample: {attention_mask.sum(dim=1).tolist()}")
-                        print(f"Checking for headers in tokenized sequence...")
-                        for b in range(input_ids.shape[0]):
-                            seq = tokenizer.decode(input_ids[b])
-                            print(f"Sample {b} ({filenames[b]}): {seq[:500]}")
-
+                # Compute full report embeddings
                 text_embeddings = last_token_pool(text_backbone(
                     input_ids=input_ids,
                     attention_mask=attention_mask
                 ).last_hidden_state, attention_mask)
 
-                text_embeddings_findings = last_token_pool(text_backbone(
-                    input_ids=padded["findings_ids"],
-                    attention_mask=padded["findings_mask"]
-                ).last_hidden_state, padded["findings_mask"])
-
-                text_embeddings_impressions = last_token_pool(text_backbone(
-                    input_ids=padded["impressions_ids"],
-                    attention_mask=padded["impressions_mask"]
-                ).last_hidden_state, padded["impressions_mask"])
-
                 save_embeddings(
                     text_embeddings, 
                     [p / "text_backbone.npy" for p in save_paths]
                 )
-                save_embeddings(
-                    text_embeddings_findings,
-                    [p / "text_backbone_findings.npy" for p in save_paths]
-                )
-                save_embeddings(
-                    text_embeddings_impressions,
-                    [p / "text_backbone_impressions.npy" for p in save_paths]
-                )
+
                 if do_text_projection:
                     text_embeddings = text_projection(text_embeddings)
-                    text_embeddings_findings = text_projection(text_embeddings_findings)
-                    text_embeddings_impressions = text_projection(text_embeddings_impressions)
                     save_embeddings(
                         text_embeddings, 
                         [p / "text_projection.npy" for p in save_paths]
                     )
+
+                # Only split by sections when no dropout is applied
+                if args.token_level_dropout == 0.0 and args.span_level_dropout == 0.0:
+                    _, padded = split_batch_by_headers(
+                        tokenizer=tokenizer,
+                        batch_input_ids=input_ids,
+                        batch_attention_mask=attention_mask,
+                        headers=["Findings:", "Impressions:", "ICD10:"],
+                        output_pad=True,
+                    )
+
+                    text_embeddings_findings = last_token_pool(text_backbone(
+                        input_ids=padded["findings_ids"],
+                        attention_mask=padded["findings_mask"]
+                    ).last_hidden_state, padded["findings_mask"])
+
+                    text_embeddings_impressions = last_token_pool(text_backbone(
+                        input_ids=padded["impressions_ids"],
+                        attention_mask=padded["impressions_mask"]
+                    ).last_hidden_state, padded["impressions_mask"])
+
                     save_embeddings(
                         text_embeddings_findings,
-                        [p / "text_projection_findings.npy" for p in save_paths]
+                        [p / "text_backbone_findings.npy" for p in save_paths]
                     )
                     save_embeddings(
                         text_embeddings_impressions,
-                        [p / "text_projection_impressions.npy" for p in save_paths]
+                        [p / "text_backbone_impressions.npy" for p in save_paths]
                     )
+
+                    if do_text_projection:
+                        text_embeddings_findings = text_projection(text_embeddings_findings)
+                        text_embeddings_impressions = text_projection(text_embeddings_impressions)
+                        save_embeddings(
+                            text_embeddings_findings,
+                            [p / "text_projection_findings.npy" for p in save_paths]
+                        )
+                        save_embeddings(
+                            text_embeddings_impressions,
+                            [p / "text_projection_impressions.npy" for p in save_paths]
+                        )
 
 
 def save_embeddings(embeddings, save_paths):
@@ -768,18 +746,12 @@ def token_level_dropout(
     attention_mask: torch.Tensor,   # (B, C)
     tokenizer,
     drop_prob: float,
-    protected_headers: List[str] = None,
-    seed: Optional[int] = None,
 ):
     if drop_prob <= 0.0:
         return input_ids, attention_mask
 
     B, C = input_ids.shape
     device = input_ids.device
-
-    # Set random seed for reproducibility
-    if seed is not None:
-        torch.manual_seed(seed)
 
     # Build special token mask: (B, C)
     special_mask = torch.tensor(
@@ -794,24 +766,8 @@ def token_level_dropout(
         dtype=torch.bool,
     )
 
-    # Build header protection mask: (B, C)
-    header_mask = torch.zeros((B, C), device=device, dtype=torch.bool)
-    if protected_headers:
-        for header in protected_headers:
-            header_ids = tokenizer(header, add_special_tokens=False)["input_ids"]
-            header_len = len(header_ids)
-            if header_len == 0:
-                continue
-            # Find all occurrences of this header in each sequence
-            for b in range(B):
-                ids_list = input_ids[b].tolist()
-                for i in range(C - header_len + 1):
-                    if ids_list[i:i+header_len] == header_ids:
-                        header_mask[b, i:i+header_len] = True
-                        print(f"DEBUG token_level_dropout: Found header '{header}' (tokens {header_ids}) at position {i}")
-
-    # Valid tokens = real tokens, not padding, not special, not headers
-    valid_mask = attention_mask.bool() & (~special_mask) & (~header_mask)
+    # Valid tokens = real tokens, not padding, not special
+    valid_mask = attention_mask.bool() & (~special_mask)
 
     # Sample per-token dropout
     drop_mask = (torch.rand((B, C), device=device) < drop_prob) & valid_mask
@@ -832,34 +788,12 @@ def span_level_dropout(
     span_prob: float,
     min_span: int = 10,
     max_span: int = 50,
-    protected_headers: List[str] = None,
-    seed: Optional[int] = None,
 ):
     if span_prob <= 0.0:
         return input_ids, attention_mask
 
     B, C = input_ids.shape
     device = input_ids.device
-
-    # Set random seed for reproducibility
-    if seed is not None:
-        torch.manual_seed(seed)
-
-    # Build header protection mask: (B, C)
-    header_mask = torch.zeros((B, C), device=device, dtype=torch.bool)
-    if protected_headers:
-        for header in protected_headers:
-            header_ids = tokenizer(header, add_special_tokens=False)["input_ids"]
-            header_len = len(header_ids)
-            if header_len == 0:
-                continue
-            # Find all occurrences of this header in each sequence
-            for b in range(B):
-                ids_list = input_ids[b].tolist()
-                for i in range(C - header_len + 1):
-                    if ids_list[i:i+header_len] == header_ids:
-                        header_mask[b, i:i+header_len] = True
-                        print(f"DEBUG span_level_dropout: Found header '{header}' (tokens {header_ids}) at position {i}")
 
     input_ids = input_ids.clone()
     attention_mask = attention_mask.clone()
@@ -870,7 +804,6 @@ def span_level_dropout(
             if (
                 attention_mask[b, i] == 0
                 or input_ids[b, i].item() in tokenizer.all_special_ids
-                or header_mask[b, i]
             ):
                 i += 1
                 continue
@@ -885,7 +818,6 @@ def span_level_dropout(
                     if (
                         attention_mask[b, j] == 0
                         or input_ids[b, j].item() in tokenizer.all_special_ids
-                        or header_mask[b, j]
                     ):
                         break
                     input_ids[b, j] = tokenizer.pad_token_id
