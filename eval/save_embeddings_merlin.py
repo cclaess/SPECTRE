@@ -600,6 +600,19 @@ def main(args):
                     [p / "text_attention_mask.npy" for p in save_paths]
                 )
 
+                # Debug: Print original sequence before dropout
+                print(f"\n=== BEFORE DROPOUT ===")
+                print(f"Filenames: {filenames}")
+                for b in range(input_ids.shape[0]):
+                    seq = tokenizer.decode(input_ids[b][attention_mask[b].bool()])
+                    print(f"Sample {b}: {seq[:800]}")
+                    # Check if headers are in the sequence
+                    for header in ["Findings:", "Impressions:", "ICD10:"]:
+                        header_ids = tokenizer(header, add_special_tokens=False)["input_ids"]
+                        ids_list = input_ids[b].tolist()
+                        found = any(ids_list[i:i+len(header_ids)] == header_ids for i in range(len(ids_list) - len(header_ids) + 1))
+                        print(f"  {header} found: {found} (tokens: {header_ids})")
+
                 if args.token_level_dropout > 0.0:
                     input_ids, attention_mask = token_level_dropout(
                         input_ids=input_ids,
