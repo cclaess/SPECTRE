@@ -583,6 +583,11 @@ def main(args):
                 input_ids = batch["input_ids"]
                 attention_mask = batch["attention_mask"]
 
+                save_embeddings(
+                    input_ids, 
+                    [p / "text_input_ids.npy" for p in save_paths]
+                )
+
                 _, padded = split_batch_by_headers(
                     tokenizer=tokenizer,
                     batch_input_ids=input_ids,
