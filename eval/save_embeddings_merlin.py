@@ -607,6 +607,7 @@ def main(args):
                         tokenizer=tokenizer,
                         drop_prob=args.token_level_dropout,
                         protected_headers=["Findings:", "Impressions:", "ICD10:"],
+                        seed=42,
                     )
                     save_embeddings(
                         input_ids,
@@ -624,6 +625,7 @@ def main(args):
                         span_prob=args.span_level_dropout,
                         min_span=10,
                         protected_headers=["Findings:", "Impressions:", "ICD10:"],
+                        seed=42,
                         max_span=min(50, int(args.span_level_dropout * input_ids.size(1))),
                     )
                     save_embeddings(
@@ -742,12 +744,17 @@ def token_level_dropout(
     tokenizer,
     drop_prob: float,
     protected_headers: List[str] = None,
+    seed: Optional[int] = None,
 ):
     if drop_prob <= 0.0:
         return input_ids, attention_mask
 
     B, C = input_ids.shape
     device = input_ids.device
+
+    # Set random seed for reproducibility
+    if seed is not None:
+        torch.manual_seed(seed)
 
     # Build special token mask: (B, C)
     special_mask = torch.tensor(
@@ -800,12 +807,17 @@ def span_level_dropout(
     min_span: int = 10,
     max_span: int = 50,
     protected_headers: List[str] = None,
+    seed: Optional[int] = None,
 ):
     if span_prob <= 0.0:
         return input_ids, attention_mask
 
     B, C = input_ids.shape
     device = input_ids.device
+
+    # Set random seed for reproducibility
+    if seed is not None:
+        torch.manual_seed(seed)
 
     # Build header protection mask: (B, C)
     header_mask = torch.zeros((B, C), device=device, dtype=torch.bool)
