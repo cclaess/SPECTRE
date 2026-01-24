@@ -35,7 +35,7 @@ def get_args_parser():
         help="Number of times to repeat random non-overlapping pool partitioning (bootstrap repeats)"
     )
     parser.add_argument(
-        "token_sequence", type=str, default="text_input_ids",
+        "--token_sequence", type=str, default="text_input_ids",
         help="Filename (no .npy) of text token sequence"
     )
     parser.add_argument(
