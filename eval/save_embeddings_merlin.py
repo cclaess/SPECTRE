@@ -621,7 +621,7 @@ def main(args):
                         attention_mask=attention_mask,
                         tokenizer=tokenizer,
                         span_prob=args.span_level_dropout,
-                        min_span=10,
+                        min_span=min(10, int(args.span_level_dropout * input_ids.size(1))),
                         max_span=min(50, int(args.span_level_dropout * input_ids.size(1))),
                     )
                     save_embeddings(
