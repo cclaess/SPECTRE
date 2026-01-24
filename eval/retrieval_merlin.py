@@ -170,12 +170,11 @@ def compute_recall_for_partition(txt_embs: np.ndarray, img_embs: np.ndarray, poo
 def main(args):
 
     # 1) load embeddings
-    token_length_range = (args.token_sequence_length[0], args.token_sequence_length[1])
     txt_embs, txt_ids = load_embeddings(
-        Path(args.emb_dir), args.txt_emb, args.token_sequence, token_length_range
+        Path(args.emb_dir), args.txt_emb, args.token_sequence, args.token_sequence_length
     )
     img_embs, img_ids = load_embeddings(
-        Path(args.emb_dir), args.img_emb, args.token_sequence, token_length_range
+        Path(args.emb_dir), args.img_emb, args.token_sequence, args.token_sequence_length
     )
 
     # ensure same ordering
