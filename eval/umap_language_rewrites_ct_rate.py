@@ -292,6 +292,7 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
 
     df = pd.read_excel(args.xlsx)
+    df = df[df["VolumeName"].str.endswith("a_1.nii.gz")]
     print(f"Loaded Excel with {len(df)} rows")
 
     print("Loading model:", args.model_name)
