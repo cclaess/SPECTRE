@@ -137,7 +137,6 @@ def evaluate_section(
 ):
     """Evaluate a section and return data for combined plots"""
     originals, rew1, rew2, idxs = load_texts_for_section(df, section_prefix)
-    originals, rew1, rew2, idxs = originals[:150], rew1[:150], rew2[:150], idxs[:150]
     n = len(originals)
     print(f"[{section_prefix}] n = {n} samples (originals present)")
 
