@@ -12,6 +12,7 @@ from monai.transforms import (
     ScaleIntensityRanged,
     Orientationd,
     Resized,
+    Spacingd,
 )
 
 from transformers import (
@@ -53,6 +54,7 @@ def main(args):
         ),
         Orientationd(keys=("image",), axcodes="RAS"),
         Resized(keys=("image",), spatial_size=(448, 448, -1), mode="trilinear"),
+        Spacingd(keys=("image",), pixdim=(-1.0, -1.0, 1.0), mode="bilinear"),
         RandomReportTransformd(
             keys=("impressions",),  # only impressions because of short context length
             keep_original_prob=1.0,
@@ -109,27 +111,14 @@ def main(args):
             image_features = outputs.image_embeds.view(B, D, -1).max(dim=1).values  # (B, feat_dim)
             text_features = outputs.text_embeds  # (B, feat_dim)
 
-            # slice_features = model.get_image_features(pixel_values=images)  # (B*D, F)
-
-            # slice_features = slice_features.view(B, D, -1)  # (B, D, feat_dim)
-            # image_features = slice_features.max(dim=1).values  # max-pool over slices (B, feat_dim)
+            # Clear cache to free memory
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             save_embeddings(
                 image_features,
                 [p / "image_projection.npy" for p in save_paths]
             )
-            # texts = processor(
-            #     text=batch["report"],
-            #     return_tensors="pt",
-            #     padding=True,
-            #     truncation=True,
-            #     max_length=512,
-            # ).to(device)
-
-            # text_features = model.get_text_features(
-            #    input_ids=texts["input_ids"],
-            #    attention_mask=texts["attention_mask"]
-            # )  # (B, feat_dim)
 
             save_embeddings(
                 text_features,
