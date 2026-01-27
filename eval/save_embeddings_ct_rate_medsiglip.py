@@ -84,9 +84,6 @@ def main(args):
 
     for batch in tqdm(dataloader):
 
-        batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v
-                 for k, v in batch.items()}
-
         filenames = [Path(f).stem for f in batch["filename"]]
         save_paths = [save_dir / f for f in filenames]
 
@@ -108,8 +105,8 @@ def main(args):
             ).to(device)
 
             outputs = model(**inputs)
-            image_features = outputs.image_embeds.view(B, D, -1).max(dim=1).values  # (B, feat_dim)
-            text_features = outputs.text_embeds  # (B, feat_dim)
+            image_features = outputs.image_embeds.cpu().view(B, D, -1).max(dim=1).values  # (B, feat_dim)
+            text_features = outputs.text_embeds.cpu()  # (B, feat_dim)
 
             # Clear cache to free memory
             if torch.cuda.is_available():
