@@ -47,7 +47,7 @@ def main(args):
             keys=("image",),
             a_min=-1000,
             a_max=1000,
-            b_min=0.0,
+            b_min=-1.0,
             b_max=1.0,
             clip=True
         ),
@@ -97,28 +97,38 @@ def main(args):
             images = images.reshape(B * D, C, H, W)
 
             images = images.repeat(1, 3, 1, 1)
+            inputs = processor(
+                text=batch["report"],
+                images=images,
+                padding="max_length",
+                return_tensors="pt",
+            ).to(device)
 
-            slice_features = model.get_image_features(pixel_values=images)  # (B*D, F)
+            outputs = model(**inputs)
+            image_features = outputs.image_embeds.view(B, D, -1).max(dim=1).values  # (B, feat_dim)
+            text_features = outputs.text_embeds  # (B, feat_dim)
 
-            slice_features = slice_features.view(B, D, -1)  # (B, D, feat_dim)
-            image_features = slice_features.max(dim=1).values  # max-pool over slices (B, feat_dim)
+            # slice_features = model.get_image_features(pixel_values=images)  # (B*D, F)
+
+            # slice_features = slice_features.view(B, D, -1)  # (B, D, feat_dim)
+            # image_features = slice_features.max(dim=1).values  # max-pool over slices (B, feat_dim)
 
             save_embeddings(
                 image_features,
                 [p / "image_projection.npy" for p in save_paths]
             )
-            texts = processor(
-                text=batch["report"],
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=512,
-            ).to(device)
+            # texts = processor(
+            #     text=batch["report"],
+            #     return_tensors="pt",
+            #     padding=True,
+            #     truncation=True,
+            #     max_length=512,
+            # ).to(device)
 
-            text_features = model.get_text_features(
-                input_ids=texts["input_ids"],
-                attention_mask=texts["attention_mask"]
-            )  # (B, feat_dim)
+            # text_features = model.get_text_features(
+            #    input_ids=texts["input_ids"],
+            #    attention_mask=texts["attention_mask"]
+            # )  # (B, feat_dim)
 
             save_embeddings(
                 text_features,
