@@ -54,7 +54,7 @@ def main(args):
         Orientationd(keys=("image",), axcodes="RAS"),
         Resized(keys=("image",), spatial_size=(448, 448, -1), mode="trilinear"),
         RandomReportTransformd(
-            keys=("findings", "impressions"),
+            keys=("impressions",),  # only impressions because of short context length
             keep_original_prob=1.0,
             drop_prob=0.0,
             allow_missing_keys=False,
@@ -101,6 +101,7 @@ def main(args):
                 text=batch["report"],
                 images=images,
                 padding="max_length",
+                truncation=True,
                 return_tensors="pt",
             ).to(device)
 
