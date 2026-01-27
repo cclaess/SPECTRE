@@ -73,3 +73,24 @@ def extended_collate_siglip(
         collated_data["attention_mask"] = torch.tensor(tokenizer_output["attention_mask"])
 
     return collated_data
+
+
+def collate_add_filenames(samples_list: List) -> dict:
+    """
+    Applies MONAI's list_data_collate and adds filenames to the collated output.
+
+    Args:
+        samples_list: List of samples containing 'image' with metadata.
+    Returns:
+        A dictionary with collated images and filenames.
+    """
+    collated_data = list_data_collate(samples_list)
+
+    if "image" in collated_data.keys():
+        if (
+            hasattr(samples_list[0]["image"].data, "meta") 
+            and "filename_or_obj" in samples_list[0]["image"].data.meta
+        ):
+            collated_data["filename"] = [s["image"].data.meta["filename_or_obj"] for s in samples_list]
+
+    return collated_data

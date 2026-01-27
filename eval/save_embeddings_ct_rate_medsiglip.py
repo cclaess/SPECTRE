@@ -20,6 +20,7 @@ from transformers import (
 )
 
 from spectre.data import CTRateDataset
+from spectre.utils import collate_add_filenames
 from spectre.transforms import RandomReportTransformd
 
 
@@ -74,6 +75,7 @@ def main(args):
         dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        collate_fn=collate_add_filenames,
     )
 
     model = AutoModel.from_pretrained("google/medsiglip-448").to(device).eval()
