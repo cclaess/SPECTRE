@@ -66,8 +66,8 @@ if __name__ == "__main__":
     plt.text(x[0], random_r1 + 0.8, "Random chance R@1", ha="left", va="bottom", color="black")
     plt.text(x[0], random_r8 + 0.8, "Random chance R@8", ha="left", va="bottom", color="black")
 
-    plt.xlabel("Percentage of text removed (%)")
-    plt.ylabel("Recall")
+    plt.xlabel("Dropped text tokens (%)", fontsize=12)
+    plt.ylabel("Recall", fontsize=12)
     plt.xticks(x)
     plt.ylim(bottom=0.0)
     plt.grid(True, linestyle=":", linewidth=0.8, alpha=0.7)
@@ -77,7 +77,10 @@ if __name__ == "__main__":
         Line2D([0], [0], color="gray", linewidth=2, linestyle="-", label="token dropout"),
         Line2D([0], [0], color="gray", linewidth=2, linestyle="--", label="span dropout"),
     ]
-    plt.legend(handles=legend_handles, frameon=False, ncol=2)
+    plt.legend(handles=legend_handles, frameon=False, ncol=2, loc="upper right", fontsize=12)
     plt.tight_layout()
+
+    plt.savefig("retrieval_degradation_merlin.png", dpi=300)
+    plt.savefig("retrieval_degradation_merlin.pdf")
 
     plt.show()
