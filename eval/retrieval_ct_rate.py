@@ -48,8 +48,8 @@ def load_embeddings(df, emb_dir: Path, key: str):
             raise FileNotFoundError(f"{path} not found")
         try:
             e = np.load(path)
-        except Exception as e:
-            raise RuntimeError(f"Error loading {path}: {e}")
+        except Exception:
+            continue
         embs.append(e.flatten())
         ids.append(base)
     return np.vstack(embs), ids
