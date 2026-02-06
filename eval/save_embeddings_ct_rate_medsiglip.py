@@ -84,7 +84,7 @@ def main(args):
 
     for batch in tqdm(dataloader):
 
-        filenames = [Path(f).stem for f in batch["filename"]]
+        filenames = [Path(Path(f).stem).stem for f in batch["filename"]]  # remove .nii.gz
         save_paths = [save_dir / f for f in filenames]
 
         with torch.no_grad():
