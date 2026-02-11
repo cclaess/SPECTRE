@@ -48,7 +48,10 @@ def get_args_parser():
         "--patch_size", type=int, nargs=3, default=(128, 128, 64), 
         help="Size of the 3D patches (H, W, D)",
     )
-
+    parser.add_argument(
+        "--do_resample", action="store_true",
+        help="Whether to resample the images to a standard spacing",
+    ) 
     parser.add_argument(
         "--architecture", type=str, default="vit_large_patch16_128", 
         help="Model architecture for image backbone",
@@ -153,7 +156,12 @@ def main(args):
             clip=True
         ),
         Orientationd(keys=("image",), axcodes="RAS"),
-        Spacingd(keys=("image",), pixdim=(0.5, 0.5, 1.0), mode=("bilinear",)),
+    ]
+    if args.do_resample:
+        transform += [
+            Spacingd(keys=("image",), pixdim=(0.5, 0.5, 1.0), mode=("bilinear",)),
+        ]
+    transform += [
         LargestMultipleCenterCropd(
             keys=("image",),
             patch_size=args.patch_size,

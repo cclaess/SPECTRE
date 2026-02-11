@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
@@ -35,27 +35,63 @@ def get_args_parser():
         help="Number of times to repeat random non-overlapping pool partitioning (bootstrap repeats)"
     )
     parser.add_argument(
+        "--token_sequence", type=str, default="text_input_ids",
+        help="Filename (no .npy) of text token sequence"
+    )
+    parser.add_argument(
+        "--token_sequence_length", type=int, nargs=2, default=None,
+        help="Min and max token sequence lengths to filter samples by before evaluation"
+    )
+    parser.add_argument(
         "--seed", type=int, default=42,
         help="Random seed for reproducibility of pool partitioning"
     )
     return parser
 
 
-def load_embeddings(emb_dir: Path, key: str) -> Tuple[np.ndarray, List[str]]:
+def load_embeddings(
+    emb_dir: Path,
+    key: str,
+    token_sequence_key: Optional[str] = None,
+    token_length_range: Optional[Tuple[int, int]] = None,
+) -> Tuple[np.ndarray, List[str]]:
     """
-    For each row in df, load emb_dir / <basename> / (key + '.npy'),
-    flatten to 1D, return array of shape (N, D), and list of basenames.
+    Load emb_dir/<basename>/<key>.npy for each sample directory, optionally filtering
+    by token sequence length derived from emb_dir/<basename>/<token_sequence_key>.npy.
+    Returns array (N, D) and list of basenames used.
     """
-    embs = []
-    ids = []
+
+    embs: List[np.ndarray] = []
+    ids: List[Path] = []
+    min_len, max_len = token_length_range if token_length_range is not None else (None, None)
+
     base_paths = sorted(p for p in emb_dir.glob("*") if p.is_dir())
     for base in base_paths:
+        if token_sequence_key and token_length_range is not None:
+            token_path = base / f"{token_sequence_key}.npy"
+            if not token_path.exists():
+                raise FileNotFoundError(f"{token_path} not found")
+
+            tokens = np.load(token_path)
+            seq_flat = np.asarray(tokens).reshape(-1)
+            non_pad = int(np.count_nonzero(seq_flat))
+            seq_length = non_pad if non_pad > 0 else int(seq_flat.size)
+
+            if seq_length < min_len or seq_length > max_len:
+                continue
+
         path = base / f"{key}.npy"
         if not path.exists():
             raise FileNotFoundError(f"{path} not found")
         e = np.load(path)
         embs.append(e.flatten())
         ids.append(base)
+
+    if not embs:
+        raise ValueError(
+            f"No embeddings loaded for key '{key}' with token length filter {token_length_range}"
+        )
+
     return np.vstack(embs), ids
 
 
@@ -134,8 +170,12 @@ def compute_recall_for_partition(txt_embs: np.ndarray, img_embs: np.ndarray, poo
 def main(args):
 
     # 1) load embeddings
-    txt_embs, txt_ids = load_embeddings(Path(args.emb_dir), args.txt_emb)
-    img_embs, img_ids = load_embeddings(Path(args.emb_dir), args.img_emb)
+    txt_embs, txt_ids = load_embeddings(
+        Path(args.emb_dir), args.txt_emb, args.token_sequence, args.token_sequence_length
+    )
+    img_embs, img_ids = load_embeddings(
+        Path(args.emb_dir), args.img_emb, args.token_sequence, args.token_sequence_length
+    )
 
     # ensure same ordering
     if txt_ids != img_ids:

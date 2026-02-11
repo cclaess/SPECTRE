@@ -15,6 +15,7 @@ from .checkpointing import (
 from .collate import (
     extended_collate_dino,
     extended_collate_siglip,
+    collate_add_filenames,
 )
 from .config import setup
 from .dataloader import get_dataloader
@@ -74,6 +75,7 @@ __all__ = [
     "extract_model_from_checkpoint_siglip",
     "extended_collate_dino",
     "extended_collate_siglip",
+    "collate_add_filenames",
     "setup",
     "get_dataloader",
     "is_enabled",

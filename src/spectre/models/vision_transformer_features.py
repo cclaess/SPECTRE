@@ -217,6 +217,10 @@ class FeatureVisionTransformer(nn.Module):
         grid_size: Optional[Union[int, Tuple[int, int, int]]] = None,
     ):
         if self.pos_embed is None and self.rope is None:
+            if self.reg_token is not None:
+                x = torch.cat([self.reg_token.expand(x.shape[0], -1, -1), x], dim=1)
+            if self.cls_token is not None:
+                x = torch.cat([self.cls_token.expand(x.shape[0], -1, -1), x], dim=1)
             return x.view(x.shape[0], -1, x.shape[-1])
         
         assert grid_size is not None or not self.dynamic_grid_size
