@@ -334,11 +334,12 @@ class VisionTransformer(nn.Module):
 
     def _pos_embed(self, x: torch.Tensor):
         if self.pos_embed is None and self.rope is None:
+            x = x.view(x.shape[0], -1, x.shape[-1])
             if self.reg_token is not None:
                 x = torch.cat([self.reg_token.expand(x.shape[0], -1, -1), x], dim=1)
             if self.cls_token is not None:
                 x = torch.cat([self.cls_token.expand(x.shape[0], -1, -1), x], dim=1)
-            return x.view(x.shape[0], -1, x.shape[-1]), None
+            return x, None
         
         B, H, W, D, C = x.shape
         x = x.view(B, -1, C)
