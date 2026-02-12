@@ -557,13 +557,13 @@ def main(args):
                     f"Number of patches {N} does not match computed grid size {Hp}x{Wp}x{Dp}"
 
                 # Save the images as numpy arrays
-                images_for_saving = batch["image"].view(B, Hp, Wp, Dp, C, H, W, D)
-                images_for_saving = images_for_saving.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
-                images_for_saving = images_for_saving.view(B, C, Hp * H, Wp * W, Dp * D)
-                save_images(
-                    images_for_saving, 
-                    [p / "image.npy" for p in save_paths]
-                )
+                # images_for_saving = batch["image"].view(B, Hp, Wp, Dp, C, H, W, D)
+                # images_for_saving = images_for_saving.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
+                # images_for_saving = images_for_saving.view(B, C, Hp * H, Wp * W, Dp * D)
+                # save_images(
+                #     images_for_saving, 
+                #     [p / "image.npy" for p in save_paths]
+                # )
                 images = batch["image"].view(B*N, C, H, W, D)  # Reshape to (B*N, C, H, W, D)
 
                 image_embeddings = image_backbone(images)
