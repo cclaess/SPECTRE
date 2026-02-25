@@ -6,6 +6,7 @@ from typing import List, Dict, Optional, Tuple
 import torch
 import numpy as np
 from tqdm import tqdm
+from torch.utils.data import ConcatDataset
 from monai.data import DataLoader
 from monai.transforms import (
     Compose,
@@ -42,6 +43,10 @@ def get_args_parser():
         help="Directory to MERLIN dataset",
     )
     parser.add_argument(
+        "--subset", type=str, default=None,
+        help="Subset of the dataset to use (e.g., 'train', 'val', 'test')",
+    )
+    parser.add_argument(
         "--save_dir", type=str, default="embeddings", 
         help="Directory to save embeddings",
     )
@@ -49,7 +54,6 @@ def get_args_parser():
         "--patch_size", type=int, nargs=3, default=(128, 128, 64), 
         help="Size of the 3D patches (H, W, D)",
     )
-
     parser.add_argument(
         "--architecture", type=str, default="vit_large_patch16_128", 
         help="Model architecture for image backbone",
@@ -346,13 +350,26 @@ def main(args):
         transform = Compose(transform)
 
     # Create dataset and dataloader
-    dataset = MerlinDataset(
-        data_dir=args.data_dir,
-        include_reports=do_text_backbone,
-        transform=transform,
-        subset="test",
-        fraction=1.0,  # Use full test set
-    )
+    if args.subset is not None:
+        dataset = MerlinDataset(
+            data_dir=args.data_dir,
+            include_reports=do_text_backbone,
+            transform=transform,
+            subset=args.subset,
+            fraction=1.0,  # Use full test set
+        )
+    else:
+        dataset = ConcatDataset([
+            MerlinDataset(
+                data_dir=args.data_dir,
+                include_reports=do_text_backbone,
+                transform=transform,
+                subset=subset,
+                fraction=1.0,  # Use full dataset
+            )
+            for subset in ["train", "val", "test"]
+        ])
+
     tokenizer = Qwen2TokenizerFast.from_pretrained(
         args.text_tokenizer) if do_text_backbone else None
     dataloader = DataLoader(
@@ -540,13 +557,13 @@ def main(args):
                     f"Number of patches {N} does not match computed grid size {Hp}x{Wp}x{Dp}"
 
                 # Save the images as numpy arrays
-                images_for_saving = batch["image"].view(B, Hp, Wp, Dp, C, H, W, D)
-                images_for_saving = images_for_saving.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
-                images_for_saving = images_for_saving.view(B, C, Hp * H, Wp * W, Dp * D)
-                save_images(
-                    images_for_saving, 
-                    [p / "image.npy" for p in save_paths]
-                )
+                # images_for_saving = batch["image"].view(B, Hp, Wp, Dp, C, H, W, D)
+                # images_for_saving = images_for_saving.permute(0, 4, 1, 5, 2, 6, 3, 7).contiguous()
+                # images_for_saving = images_for_saving.view(B, C, Hp * H, Wp * W, Dp * D)
+                # save_images(
+                #     images_for_saving, 
+                #     [p / "image.npy" for p in save_paths]
+                # )
                 images = batch["image"].view(B*N, C, H, W, D)  # Reshape to (B*N, C, H, W, D)
 
                 image_embeddings = image_backbone(images)
