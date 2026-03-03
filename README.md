@@ -37,9 +37,28 @@ model.eval()
 
 # Dummy input: (batch, crops, channels, height, width, depth)
 # For a (3 x 3 x 4) grid of (128 x 128 x 64) CT patches -> Total scan size (384 x 384 x 256)
-x = torch.randn(1, 36, 1, 128, 128, 64)
+x = torch.randn(1, 1, 384, 384, 256)
+B, C, H, W, D = x.shape
+
+patch_size = (128, 128, 64)
+pH, pW, pD = patch_size
+
+x = x.view(
+  B, C,
+  H // pH, pH,
+  W // pW, pW,
+  D // pD, pD,
+).permute(0, 2, 4, 6, 1, 3, 5, 7).reshape(B, -1, C, pH, pW, pD)
+
 with torch.no_grad():
-    features = model(x, grid_size=(3, 3, 4))
+    features = model(
+      x, 
+      grid_size=(
+        H // pH,
+        W // pW,
+        D // pD,
+      ),
+    )
 print("Features shape:", features.shape)
 ```
 
