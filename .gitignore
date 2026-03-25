@@ -176,6 +176,7 @@ cython_debug/
 .pypirc
 
 # Training/testing data
+data/
 datasets/
 
 # wandb
@@ -186,4 +187,5 @@ wandb/
 *.ckpt
 *.pth
 
-data
+# VS Code
+.vscode/
