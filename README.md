@@ -1,3 +1,5 @@
+📢 [2026-04-10] SPECTRE is now an official baseline for the [**CVPR 2026 Workshop Competition: Foundation Models for General CT Image Diagnosis**](https://www.codabench.org/competitions/12650/)! See `experiments/cvpr26_fm_for_ct_diag_task_1` for scripts and additional details.  
+
 📢 [2026-02-21] SPECTRE has been accepted for presentation at **CVPR 2026** (Denver, Colorado, USA)!  
 
 📢 [2026-01-20] [Semantic segmentation](https://github.com/cviviers/nnUNet) code and configurations using the nnUNet framework are now released!  
@@ -37,9 +39,28 @@ model.eval()
 
 # Dummy input: (batch, crops, channels, height, width, depth)
 # For a (3 x 3 x 4) grid of (128 x 128 x 64) CT patches -> Total scan size (384 x 384 x 256)
-x = torch.randn(1, 36, 1, 128, 128, 64)
+x = torch.randn(1, 1, 384, 384, 256)
+B, C, H, W, D = x.shape
+
+patch_size = (128, 128, 64)
+pH, pW, pD = patch_size
+
+x = x.view(
+  B, C,
+  H // pH, pH,
+  W // pW, pW,
+  D // pD, pD,
+).permute(0, 2, 4, 6, 1, 3, 5, 7).reshape(B, -1, C, pH, pW, pD)
+
 with torch.no_grad():
-    features = model(x, grid_size=(3, 3, 4))
+    features = model(
+      x, 
+      grid_size=(
+        H // pH,
+        W // pW,
+        D // pD,
+      ),
+    )
 print("Features shape:", features.shape)
 ```
 
