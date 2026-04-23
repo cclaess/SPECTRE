@@ -10,7 +10,7 @@ MODEL_CONFIGS = {
         "backbone_kwargs": {},
         "feature_combiner": "feat_vit_small",
         "feature_combiner_checkpoint_path_or_url": None,
-        "feature_combiner_kwargs": {},
+        "feature_combiner_kwargs": {"pos_embed": "rope"},
         "description": "SPECTRE model with ViT-Small backbone and feature combiner.",
     },  # Pretrained/Distilled checkpoints will be added later
     "spectre-base": {
@@ -20,7 +20,7 @@ MODEL_CONFIGS = {
         "backbone_kwargs": {},
         "feature_combiner": "feat_vit_base",
         "feature_combiner_checkpoint_path_or_url": None,
-        "feature_combiner_kwargs": {},
+        "feature_combiner_kwargs": {"pos_embed": "rope"},
         "description": "SPECTRE model with ViT-Base backbone and feature combiner.",
     },  # Pretrained/Distilled checkpoints will be added later
     "spectre-large": {
@@ -30,7 +30,7 @@ MODEL_CONFIGS = {
         "backbone_kwargs": {},
         "feature_combiner": "feat_vit_large",
         "feature_combiner_checkpoint_path_or_url": None,
-        "feature_combiner_kwargs": {},
+        "feature_combiner_kwargs": {"pos_embed": "rope"},
         "description": "SPECTRE model with ViT-Large backbone and feature combiner.",
     },
     "spectre-large-pretrained": {
