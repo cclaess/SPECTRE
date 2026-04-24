@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "spectre-fm"
 description = "SPECTRE: cross-modal self-supervised pretraining for CT representation extraction"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dynamic = ["version"]
 
 authors = [
