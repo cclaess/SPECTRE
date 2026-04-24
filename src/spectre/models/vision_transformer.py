@@ -3,7 +3,7 @@ from functools import partial
 from urllib.parse import urlparse
 from typing import (
     Tuple, Union, Callable, Literal, 
-    Optional, Type, Set, List,
+    Optional, Type, Set, List, Dict, Any,
 )
 
 import torch
@@ -399,7 +399,7 @@ class VisionTransformer(nn.Module):
         output_fmt: str = 'NCHWD',
         intermediates_only: bool = False,
         output_dict: bool = False,
-    ) -> Union[List[torch.Tensor], Tuple[torch.Tensor, List[torch.Tensor]]]:
+    ) -> Union[List[torch.Tensor], Tuple[torch.Tensor, List[torch.Tensor]], Dict[str, Any]]:
         """ Forward features that returns intermediates.
 
         Args:
