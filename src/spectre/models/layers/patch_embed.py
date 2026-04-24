@@ -20,17 +20,17 @@ class PatchEmbed(nn.Module):
     dynamic_img_pad: torch.jit.Final[bool]
 
     def __init__(
-            self,
-            img_size: Optional[Union[int, Tuple[int, int, int]]] = (128, 128, 64),
-            patch_size: Union[int, Tuple[int, int, int]] = (16, 16, 8),
-            in_chans: int = 1,
-            embed_dim: int = 768,
-            norm_layer: Optional[Callable] = None,
-            flatten: bool = True,
-            output_fmt: Optional[str] = None,
-            bias: bool = True,
-            strict_img_size: bool = True,
-            dynamic_img_pad: bool = False,
+        self,
+        img_size: Optional[Union[int, Tuple[int, int, int]]] = (128, 128, 64),
+        patch_size: Union[int, Tuple[int, int, int]] = (16, 16, 8),
+        in_chans: int = 1,
+        embed_dim: int = 768,
+        norm_layer: Optional[Callable] = None,
+        flatten: bool = True,
+        output_fmt: Optional[str] = None,
+        bias: bool = True,
+        strict_img_size: bool = True,
+        dynamic_img_pad: bool = False,
     ):
         super().__init__()
         self.patch_size = to_3tuple(patch_size)
@@ -60,8 +60,8 @@ class PatchEmbed(nn.Module):
     
     def set_input_size(
             self,
-            img_size: Optional[Union[int, Tuple[int, int, int]]] = None,
-            patch_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+        img_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+        patch_size: Optional[Union[int, Tuple[int, int, int]]] = None,
     ):
         new_patch_size = None
         if patch_size is not None:
