@@ -19,41 +19,41 @@ class FeatureVisionTransformer(nn.Module):
     """ Vision Transformer that accepts flattened patches as input.
     """
     def __init__(
-            self, 
-            grid_size: Optional[Union[int, Tuple[int, int, int]]] = None,
-            patch_dim: int = 768,
-            num_classes: int = 1000,
-            global_pool: Literal['', 'avg', 'avgmax', 'max', 'token', 'map'] = 'token',
-            embed_dim: int = 768,
-            depth: int = 12,
-            num_heads: int = 12,
-            attn_mode: str = 'mha',
-            q_proj_dim: Optional[int] = None,
-            kv_proj_dim: Optional[int] = None,
-            mlp_ratio: float = 4.,
-            qkv_bias: bool = True,
-            qk_norm: bool = False,
-            proj_bias: bool = True,
-            init_values: Optional[float] = None,
-            class_token: bool = True,
-            pos_embed: str = 'learn',
-            no_embed_class: bool = False,
-            rope_kwargs: Optional[dict] = None,
-            reg_tokens: int = 0,
-            pre_norm: bool = False,
-            final_norm: bool = True,
-            fc_norm: Optional[bool] = None,
-            dynamic_grid_size: bool = False,
-            drop_rate: float = 0.,
-            pos_drop_rate: float = 0.,
-            patch_drop_rate: float = 0.,
-            proj_drop_rate: float = 0.,
-            attn_drop_rate: float = 0.,
-            drop_path_rate: float = 0.,
-            norm_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
-            act_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
-            block_fn: Type[nn.Module] = Block,
-            mlp_layer: Type[nn.Module] = Mlp,
+        self, 
+        grid_size: Optional[Union[int, Tuple[int, int, int]]] = None,
+        patch_dim: int = 768,
+        num_classes: int = 1000,
+        global_pool: Literal['', 'avg', 'avgmax', 'max', 'token', 'map'] = 'token',
+        embed_dim: int = 768,
+        depth: int = 12,
+        num_heads: int = 12,
+        attn_mode: str = 'mha',
+        q_proj_dim: Optional[int] = None,
+        kv_proj_dim: Optional[int] = None,
+        mlp_ratio: float = 4.,
+        qkv_bias: bool = True,
+        qk_norm: bool = False,
+        proj_bias: bool = True,
+        init_values: Optional[float] = None,
+        class_token: bool = True,
+        pos_embed: str = 'learn',
+        no_embed_class: bool = False,
+        rope_kwargs: Optional[dict] = None,
+        reg_tokens: int = 0,
+        pre_norm: bool = False,
+        final_norm: bool = True,
+        fc_norm: Optional[bool] = None,
+        dynamic_grid_size: bool = False,
+        drop_rate: float = 0.,
+        pos_drop_rate: float = 0.,
+        patch_drop_rate: float = 0.,
+        proj_drop_rate: float = 0.,
+        attn_drop_rate: float = 0.,
+        drop_path_rate: float = 0.,
+        norm_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
+        act_layer: Optional[Union[Callable, Type[torch.nn.Module]]] = None,
+        block_fn: Type[nn.Module] = Block,
+        mlp_layer: Type[nn.Module] = Mlp,
     ) -> None:
         """
         Args:
@@ -107,7 +107,7 @@ class FeatureVisionTransformer(nn.Module):
         self.num_reg_tokens = reg_tokens
         self.has_class_token = class_token
         self.no_embed_class = no_embed_class  # don't embed prefix positions (includes reg)
-        self.dynamic_grid_size = dynamic_grid_size or pos_embed == 'rope'
+        self.dynamic_grid_size = dynamic_grid_size
 
         self.num_patches = None if grid_size is None else int(math.prod(grid_size))
         self.patch_proj = nn.Linear(patch_dim, embed_dim, proj_bias)
@@ -224,7 +224,9 @@ class FeatureVisionTransformer(nn.Module):
                 x = torch.cat([self.cls_token.expand(x.shape[0], -1, -1), x], dim=1)
             return x, None
         
-        assert grid_size is not None or not self.dynamic_grid_size
+        if self.dynamic_grid_size or self.rope is not None:
+            assert grid_size is not None, "grid_size must be provided when using dynamic_grid_size or RoPE."
+        
         pos_embed, rope = None, None
         if self.pos_embed is not None:
             if self.dynamic_grid_size:
@@ -269,7 +271,6 @@ class FeatureVisionTransformer(nn.Module):
                 x = x + pos_embed
 
         return self.pos_drop(x), rope
-
 
     def forward_features(
         self, 

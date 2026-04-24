@@ -2,8 +2,8 @@ import os
 from functools import partial
 from urllib.parse import urlparse
 from typing import (
-    Tuple, Union, Callable, Sequence, 
-    Literal, Optional, Type, Set, List,
+    Tuple, Union, Callable, Literal, 
+    Optional, Type, Set, List, Dict, Any,
 )
 
 import torch
@@ -183,12 +183,14 @@ class VisionTransformer(nn.Module):
         self.num_reg_tokens = reg_tokens
         self.has_class_token = class_token
         self.no_embed_class = no_embed_class  # don't embed prefix positions (includes reg)
-        self.dynamic_img_size = dynamic_img_size or pos_embed == 'rope'
+        self.dynamic_img_size = dynamic_img_size
 
         embed_args = {}
         if self.dynamic_img_size:
             # flatten deferred until after pos embed
             embed_args.update(dict(strict_img_size=False, output_fmt="NHWDC"))
+        elif pos_embed == 'rope':
+            embed_args['output_fmt'] = "NHWDC"
         if embed_norm_layer is not None:
             embed_args['norm_layer'] = embed_norm_layer
         self.patch_embed = embed_layer(
@@ -308,9 +310,9 @@ class VisionTransformer(nn.Module):
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
     def set_input_size(
-            self,
-            img_size: Optional[Tuple[int, int, int]] = None,
-            patch_size: Optional[Tuple[int, int, int]] = None,
+        self,
+        img_size: Optional[Tuple[int, int, int]] = None,
+        patch_size: Optional[Tuple[int, int, int]] = None,
     ):
         """Method updates the input image resolution, patch size
 
@@ -341,8 +343,10 @@ class VisionTransformer(nn.Module):
                 x = torch.cat([self.cls_token.expand(x.shape[0], -1, -1), x], dim=1)
             return x, None
         
-        B, H, W, D, C = x.shape
-        x = x.view(B, -1, C)
+        if self.dynamic_img_size or self.rope is not None:
+            B, H, W, D, C = x.shape
+            x = x.view(B, -1, C)
+
         pos_embed, rope = None, None
         if self.pos_embed is not None:
             if self.dynamic_img_size:
@@ -384,18 +388,18 @@ class VisionTransformer(nn.Module):
                 x = x + pos_embed
 
         return self.pos_drop(x), rope
-        
 
     def forward_intermediates(
-            self,
-            x: torch.Tensor,
-            indices: Optional[Union[int, List[int]]] = None,
-            return_prefix_tokens: bool = False,
-            norm: bool = False,
-            stop_early: bool = False,
-            output_fmt: str = 'NCHWD',
-            intermediates_only: bool = False,
-    ) -> Union[List[torch.Tensor], Tuple[torch.Tensor, List[torch.Tensor]]]:
+        self,
+        x: torch.Tensor,
+        indices: Optional[Union[int, List[int]]] = None,
+        return_prefix_tokens: bool = False,
+        norm: bool = False,
+        stop_early: bool = False,
+        output_fmt: str = 'NCHWD',
+        intermediates_only: bool = False,
+        output_dict: bool = False,
+    ) -> Union[List[torch.Tensor], Tuple[torch.Tensor, List[torch.Tensor]], Dict[str, Any]]:
         """ Forward features that returns intermediates.
 
         Args:
@@ -406,7 +410,10 @@ class VisionTransformer(nn.Module):
             stop_early: Stop iterating over blocks when last desired intermediate hit
             output_fmt: Shape of intermediate feature outputs
             intermediates_only: Only return intermediate features
+            output_dict: Return outputs as a dictionary with 'image_features' and 'image_intermediates' keys
         Returns:
+            A tuple with (final_features, intermediates), a list of intermediate features, or a dictionary containing
+            'image_features' and 'image_intermediates' (and optionally 'image_intermediates_prefix')
 
         """
         assert output_fmt in ('NCHWD', 'NLC'), 'Output format must be one of NCHWD or NLC.'
@@ -442,7 +449,23 @@ class VisionTransformer(nn.Module):
         if reshape:
             # reshape to BCHW output format
             H, W, D = self.patch_embed.dynamic_feat_size((height, width, depth))
-            intermediates = [y.reshape(B, H, W, D -1).permute(0, 4, 1, 2, 3).contiguous() for y in intermediates]
+            intermediates = [y.reshape(B, H, W, D, -1).permute(0, 4, 1, 2, 3).contiguous() for y in intermediates]
+
+        if output_dict:
+            result_dict = {}
+            # Intermediates are always included
+            result_dict['image_intermediates'] = intermediates
+            if prefix_tokens is not None and return_prefix_tokens:
+                result_dict['image_intermediates_prefix'] = prefix_tokens
+            
+            # Only include features if not intermediates_only
+            if not intermediates_only:
+                x_final = self.norm(x)
+                result_dict['image_features'] = x_final
+
+            return result_dict
+
+        # For non-dictionary output, maintain the original behavior
         if not torch.jit.is_scripting() and return_prefix_tokens and prefix_tokens is not None:
             # return_prefix not support in torchscript due to poor type handling
             intermediates = list(zip(intermediates, prefix_tokens))
@@ -455,12 +478,20 @@ class VisionTransformer(nn.Module):
         return x, intermediates
 
     def prune_intermediate_layers(
-            self,
-            indices: Union[int, List[int]] = 1,
-            prune_norm: bool = False,
-            prune_head: bool = True,
+        self,
+        indices: Union[int, List[int]] = 1,
+        prune_norm: bool = False,
+        prune_head: bool = True,
     ):
-        """ Prune layers not required for specified intermediates.
+        """Prune layers not required for specified intermediates.
+
+        Args:
+            indices: Indices of intermediate layers to keep.
+            prune_norm: Whether to prune normalization layer.
+            prune_head: Whether to prune the classifier head.
+
+        Returns:
+            List of indices that were kept.
         """
         take_indices, max_index = feature_take_indices(len(self.blocks), indices)
         self.blocks = self.blocks[:max_index + 1]  # truncate blocks
@@ -472,32 +503,37 @@ class VisionTransformer(nn.Module):
         return take_indices
     
     def get_intermediate_layers(
-            self,
-            x: torch.Tensor,
-            n: Union[int, Sequence] = 1,
-            reshape: bool = False,
-            return_prefix_tokens: bool = False,
-            norm: bool = False,
+        self,
+        x: torch.Tensor,
+        n: Union[int, List[int], Tuple[int]] = 1,
+        reshape: bool = False,
+        return_prefix_tokens: bool = False,
+        norm: bool = False,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]]]:
-        # take last n blocks if n is an int, if in is a sequence, select by matching indices
-        outputs = self._intermediate_layers(x, n)
-        if norm:
-            outputs = [self.norm(out) for out in outputs]
-        prefix_tokens = [out[:, 0:self.num_prefix_tokens] for out in outputs]
-        outputs = [out[:, self.num_prefix_tokens:] for out in outputs]
+        """Get intermediate layer outputs (DINO interface compatibility).
 
-        if reshape:
-            grid_size = self.patch_embed.grid_size
-            outputs = [
-                out.reshape(x.shape[0], *grid_size, -1).permute(0, 4, 1, 2, 3).contiguous()
-                for out in outputs
-            ]
+        NOTE: This API is for backwards compat, favour using forward_intermediates() directly.
 
-        if return_prefix_tokens:
-            return tuple(zip(outputs, prefix_tokens))
-        return tuple(outputs)
+        Args:
+            x: Input tensor.
+            n: Number or indices of layers.
+            reshape: Reshape to NCHWD format.
+            return_prefix_tokens: Return prefix tokens.
+            norm: Apply normalization.
+
+        Returns:
+            List of intermediate features.
+        """
+        return self.forward_intermediates(
+            x, n,
+            return_prefix_tokens=return_prefix_tokens,
+            norm=norm,
+            output_fmt='NCHWD' if reshape else 'NLC',
+            intermediates_only=True,
+        )
     
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through feature layers (embeddings, transformer blocks, post-transformer norm)."""
         x = self.patch_embed(x)
         x, rope = self._pos_embed(x)
         x = self.patch_drop(x)
@@ -509,14 +545,36 @@ class VisionTransformer(nn.Module):
         return x
 
     def pool(self, x: torch.Tensor, pool_type: Optional[str] = None) -> torch.Tensor:
+        """Apply pooling to feature tokens.
+
+        Args:
+            x: Feature tensor.
+            pool_type: Pooling type override.
+
+        Returns:
+            Pooled features.
+        """
         if self.attn_pool is not None:
             x = self.attn_pool(x)
             return x
         pool_type = self.global_pool if pool_type is None else pool_type
-        x = global_pool_nlc(x, pool_type=pool_type, num_prefix_tokens=self.num_prefix_tokens)
+        x = global_pool_nlc(
+            x, 
+            pool_type=pool_type, 
+            num_prefix_tokens=self.num_prefix_tokens,
+        )
         return x
 
     def forward_head(self, x: torch.Tensor, pre_logits: bool = False) -> torch.Tensor:
+        """Forward pass through classifier head.
+
+        Args:
+            x: Feature tensor.
+            pre_logits: Return features before final classifier.
+
+        Returns:
+            Output tensor.
+        """
         x = self.pool(x)
         x = self.fc_norm(x)
         x = self.head_drop(x)
