@@ -1,7 +1,13 @@
 from typing import List, Callable, Optional
 
 import torch
-from monai.data import list_data_collate
+
+MONAI_IMPORT_ERROR = None
+try:
+    from monai.data import list_data_collate
+except ImportError as e:
+    list_data_collate = lambda x: x  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 
 def extended_collate_dino(samples_list: List) -> dict:
@@ -19,6 +25,12 @@ def extended_collate_dino(samples_list: List) -> dict:
     Returns:
         A dictionary with collated global/local crops and corresponding masks.
     """
+    if MONAI_IMPORT_ERROR is not None:
+        raise ImportError(
+            "MONAI is required to use extended_collate_dino but not installed. "
+            "Please install MONAI to use this collate function."
+        ) from MONAI_IMPORT_ERROR
+    
     # Apply MONAI's list_data_collate
     collated_data = list_data_collate(samples_list)
 
@@ -50,6 +62,12 @@ def extended_collate_siglip(
     Returns:
         A dictionary with collated images and tokenized text.
     """
+    if MONAI_IMPORT_ERROR is not None:
+        raise ImportError(
+            "MONAI is required to use extended_collate_siglip but not installed. "
+            "Please install MONAI to use this collate function."
+        ) from MONAI_IMPORT_ERROR
+    
     collated_data = list_data_collate(samples_list)
 
     if return_filenames:
@@ -84,6 +102,12 @@ def collate_add_filenames(samples_list: List) -> dict:
     Returns:
         A dictionary with collated images and filenames.
     """
+    if MONAI_IMPORT_ERROR is not None:
+        raise ImportError(
+            "MONAI is required to use collate_add_filenames but not installed. "
+            "Please install MONAI to use this collate function."
+        ) from MONAI_IMPORT_ERROR
+    
     collated_data = list_data_collate(samples_list)
 
     if "image" in collated_data.keys():

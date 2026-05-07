@@ -2,10 +2,19 @@ import os
 from pathlib import Path
 from typing import Callable, List, Dict
 
-import pandas as pd
-from monai.data import Dataset
+from spectre.data._base_datasets import (
+    Dataset,
+    PersistentDataset, 
+    GDSDataset,
+)
 
-from spectre.data._base_datasets import PersistentDataset, GDSDataset
+_PANDAS_IMPORT_ERROR = None
+try:
+    import pandas as pd
+except ImportError as e:
+    pd = None  # type: ignore
+    _PANDAS_IMPORT_ERROR = e
+
 
 def parse_name(image_path):
     return image_path.name.replace(".nii.gz", "")
@@ -17,6 +26,11 @@ def _initialize_dataset(
     subset: str = "train",
     fraction: float = 1.0,
 ) -> List[Dict[str, str]]:
+    if _PANDAS_IMPORT_ERROR is not None:
+        raise ImportError(
+            "Pandas is required to initialize the dataset but not installed. "
+            "Please install Pandas to use this dataset."
+        ) from _PANDAS_IMPORT_ERROR
 
     image_paths = sorted(Path(data_dir).glob(os.path.join(
         "merlinabdominalctdataset", "merlin_data", "*.nii.gz")))

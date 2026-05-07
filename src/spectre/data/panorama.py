@@ -1,9 +1,11 @@
 from pathlib import Path
 from typing import Callable, List, Dict
 
-from monai.data import Dataset
-
-from spectre.data._base_datasets import PersistentDataset, GDSDataset
+from spectre.data._base_datasets import (
+    Dataset,
+    PersistentDataset, 
+    GDSDataset,
+)
 
 
 def _initialize_dataset(

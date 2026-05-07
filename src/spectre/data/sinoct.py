@@ -2,10 +2,18 @@ import random
 from pathlib import Path
 from typing import Callable, List, Dict, Union
 
-import pandas as pd
-from monai.data import Dataset
+from spectre.data._base_datasets import (
+    Dataset,
+    PersistentDataset, 
+    GDSDataset,
+)
 
-from spectre.data._base_datasets import PersistentDataset, GDSDataset
+_PANDAS_IMPORT_ERROR = None
+try:
+    import pandas as pd
+except ImportError as e:
+    pd = None  # type: ignore
+    _PANDAS_IMPORT_ERROR = e
 
 
 def _initialize_dataset(
@@ -14,7 +22,12 @@ def _initialize_dataset(
     split_ratio: tuple = (0.8, 0.1, 0.1),  # train, val, test
     seed: int = 0,
 ) -> List[Dict[str, Union[str, int]]]:
-    
+    if _PANDAS_IMPORT_ERROR is not None:
+        raise ImportError(
+            "Pandas is required to initialize the dataset but not installed. "
+            "Please install Pandas to use this dataset."
+        ) from _PANDAS_IMPORT_ERROR
+
     labels_df = pd.read_csv(Path(data_dir) / "labels.csv", index_col="patient_id")
     labels_df["abnormal"] = labels_df["label"].apply(lambda x: int(x.split(",")[1]))
     labels_df = labels_df[["abnormal"]]

@@ -1,7 +1,14 @@
 import os
 
 import torch.distributed as dist
-from accelerate import Accelerator, DataLoaderConfiguration
+
+ACCELERATE_IMPORT_ERROR = None
+try:
+    from accelerate import Accelerator, DataLoaderConfiguration
+except ImportError as e:
+    Accelerator = None  # type: ignore
+    DataLoaderConfiguration = None  # type: ignore
+    ACCELERATE_IMPORT_ERROR = e
 
 
 def is_enabled() -> bool:
@@ -56,6 +63,11 @@ def init_distributed(cfg):
     """
     Initialize distributed training.
     """
+    if ACCELERATE_IMPORT_ERROR is not None:
+        raise ImportError(
+            "Accelerate is required to use init_distributed but not installed. "
+            "Please install Accelerate to use this function."
+        ) from ACCELERATE_IMPORT_ERROR
 
     # Initialize accelerator
     dataloader_config = DataLoaderConfiguration(

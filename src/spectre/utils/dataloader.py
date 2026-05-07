@@ -1,9 +1,17 @@
+from __future__ import annotations
 import os
 from typing import Union, Callable, Optional, List
 
 import torch
-import monai.data as data
 from torch.utils.data import ConcatDataset
+
+MONAI_IMPORT_ERROR = None
+try:
+    import monai.data as data
+except ImportError as e:
+    data = None  # type: ignore
+    MONAI_IMPORT_ERROR = e
+
 
 
 def get_dataloader(
@@ -24,10 +32,15 @@ def get_dataloader(
     drop_last: bool = True,
     persistent_workers: bool = True,
     use_thread: bool = False,
-) -> data.DataLoader:
+) -> "DataLoader":
     """
     Get dataloader for training.
     """
+    if MONAI_IMPORT_ERROR is not None:
+        raise ImportError(
+            "MONAI is required to use get_dataloader but not installed. "
+            "Please install MONAI to use this function."
+        ) from MONAI_IMPORT_ERROR
 
     if isinstance(datasets, str):
         datasets = [datasets]

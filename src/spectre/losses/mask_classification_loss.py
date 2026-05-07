@@ -9,7 +9,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 import numpy as np
-from scipy.optimize import linear_sum_assignment
+
+_SCIPY_IMPORT_ERROR = None
+try:
+    from scipy.optimize import linear_sum_assignment
+except ImportError as e:
+    linear_sum_assignment = None  # type: ignore
+    _SCIPY_IMPORT_ERROR = e
 
 
 class MaskClassificationLoss(nn.Module):
@@ -56,6 +62,11 @@ class MaskClassificationLoss(nn.Module):
                 (e.g. to downweight false-positive penalties). This is stored in
                 `self.empty_weight` and passed to `CrossEntropyLoss`.
         """
+        if _SCIPY_IMPORT_ERROR is not None:
+            raise ImportError(
+                "Scipy is required to use MaskClassificationLoss but not installed. "
+                "Please install Scipy to use this loss."
+            ) from _SCIPY_IMPORT_ERROR
         super().__init__()
         self.num_labels = num_labels
         self.num_points = num_points

@@ -1,8 +1,16 @@
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
-from monai.config import KeysCollection
-from monai.transforms import Cropd, CenterSpatialCrop
+
+MONAI_IMPORT_ERROR = None
+try:
+    from monai.config import KeysCollection
+    from monai.transforms import Cropd, CenterSpatialCrop
+except ImportError as e:
+    KeysCollection = Any  # type: ignore
+    Cropd = object  # type: ignore
+    CenterSpatialCrop = object  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 
 class LargestMultipleCenterCropd(Cropd):
@@ -22,6 +30,12 @@ class LargestMultipleCenterCropd(Cropd):
         allow_missing_keys: bool = False,
         lazy: bool = False,
     ) -> None:
+        if MONAI_IMPORT_ERROR is not None:
+            raise ImportError(
+                "MONAI is required to use LargestMultipleCenterCropd but not installed. "
+                "Please install MONAI to use this transform."
+            ) from MONAI_IMPORT_ERROR
+        
         self.patch_size = patch_size
         cropper = CenterSpatialCrop(roi_size=patch_size, lazy=lazy)  # Placeholder, will be reset per image
         super().__init__(keys, cropper=cropper, allow_missing_keys=allow_missing_keys, lazy=lazy)
