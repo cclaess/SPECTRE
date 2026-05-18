@@ -17,11 +17,11 @@ from spectre.transforms import RandScaleIntensityRange
 
 if transforms is not None:
     Compose = transforms.Compose
-    _BaseClass = (
+    _BaseClass = type("_BaseClass", (
         transforms.Randomizable,
         transforms.MapTransform,
         transforms.LazyTransform,
-    )
+    ), {})
 else:
     Compose = object  # type: ignore
     _BaseClass = object  # type: ignore
