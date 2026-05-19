@@ -11,7 +11,7 @@ except ImportError as e:
 
 
 if MONAI_IMPORT_ERROR is None:
-    _BaseClass = (Randomizable, MapTransform)
+    _BaseClass = type("_BaseClass", (Randomizable, MapTransform), {})
 else:
     _BaseClass = object
 
