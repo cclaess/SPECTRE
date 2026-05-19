@@ -1,10 +1,18 @@
-from typing import Sequence, Optional, Hashable, Mapping
+from typing import Any, Sequence, Optional, Hashable, Mapping
 
 import torch
 import numpy as np
-from monai.config import KeysCollection
-from monai.transforms import MapTransform
-from monai.config.type_definitions import NdarrayOrTensor
+
+MONAI_IMPORT_ERROR = None
+try:
+    from monai.config import KeysCollection
+    from monai.transforms import MapTransform
+    from monai.config.type_definitions import NdarrayOrTensor
+except ImportError as e:
+    KeysCollection = Any  # type: ignore
+    MapTransform = object  # type: ignore
+    NdarrayOrTensor = Any  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 
 class CombineLabelsd(MapTransform):
@@ -25,6 +33,11 @@ class CombineLabelsd(MapTransform):
         labels: Optional[Sequence[int]] = None,
         allow_missing_keys: bool = False,
     ) -> None:
+        if MONAI_IMPORT_ERROR is not None:
+            raise ImportError(
+                "MONAI is required to use CombineLabelsd but not installed. "
+                "Please install MONAI to use this transform."
+            ) from MONAI_IMPORT_ERROR
         
         if labels is not None and len(keys) != len(labels):
             raise ValueError("The number of keys must match the number of labels provided.")

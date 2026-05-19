@@ -1,14 +1,29 @@
-from typing import Optional, Tuple, Union
 import warnings
-import numpy as np
+from typing import Any, Optional, Tuple, Union
+
 import torch
+import numpy as np
 
-from monai.transforms import Transform, Randomizable
-from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
-from monai.utils import convert_to_tensor, convert_data_type
+MONAI_IMPORT_ERROR = None
+try:
+    from monai.transforms import Transform, Randomizable
+    from monai.config.type_definitions import DtypeLike, NdarrayOrTensor
+    from monai.utils import convert_to_tensor, convert_data_type
+except ImportError as e:
+    DtypeLike = Any  # type: ignore
+    NdarrayOrTensor = Any  # type: ignore
+    convert_to_tensor = lambda x: x  # type: ignore
+    convert_data_type = lambda x, dtype: (x, None, None)  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 
-class RandScaleIntensityRange(Randomizable, Transform):
+if MONAI_IMPORT_ERROR is None:
+    _BaseClass = type("_BaseClass", (Randomizable, Transform), {})
+else:
+    _BaseClass = object
+
+
+class RandScaleIntensityRange(_BaseClass):
     """
     Randomizable variant of ScaleIntensityRange that samples the input window
     (a_min, a_max) per-call using MONAI's RNG (self.R).
@@ -35,6 +50,12 @@ class RandScaleIntensityRange(Randomizable, Transform):
         dtype: DtypeLike = np.float32,
         prob: float = 1.0,
     ) -> None:
+        if MONAI_IMPORT_ERROR is not None:
+            raise ImportError(
+                "MONAI is required to use RandScaleIntensityRange but not installed. "
+                "Please install MONAI to use this transform."
+            ) from MONAI_IMPORT_ERROR
+        
         Transform.__init__(self)
         Randomizable.__init__(self)
         self.a_min = a_min

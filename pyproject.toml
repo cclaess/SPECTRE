@@ -28,26 +28,48 @@ keywords = ["medical", "ct", "self-supervised", "vision", "deep-learning"]
 
 dependencies = [
 	"torch",
-	"wandb",
 	"numpy",
-	"monai[all]",
+	"timm",
+	"transformers",
+	"huggingface_hub",
+	"loralib",
+]
+
+[project.optional-dependencies]
+training = [
+	"wandb",
+	"monai",
 	"nibabel",
 	"SimpleITK",
-	"timm",
 	"scipy",
 	"pandas",
 	"openpyxl",
+	"tqdm",
 	"accelerate",
 	"omegaconf",
-	"transformers",
-	"tokenizers",
-	"peft",
-	"loralib",
+]
+
+eval = [
+	"monai",
+	"nibabel",
+	"SimpleITK",
+	"pillow",
+	"scipy",
+	"scikit-learn",
+	"pandas",
+	"openpyxl",
+	"tqdm",
 	"matplotlib",
 	"seaborn",
-	"scikit-learn",
 	"umap-learn",
 ]
+
+gds-cuda12 = [
+	"cupy-cuda12x",
+	"kvikio",
+]
+
+all = ["spectre-fm[training,eval,gds-cuda12]"]
 
 [project.urls]
 Homepage = "https://github.com/cclaess/SPECTRE"

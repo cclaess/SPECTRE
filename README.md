@@ -94,10 +94,38 @@ This repository is organized as follows:
 
 ## ⚙️ Setting Up the Environment
 
-To get up and running with SPECTRE, simply install our package using pip:
+To get up and running with SPECTRE, install the base package with pip:
 
 ```bash
 pip install spectre-fm
+```
+
+This installs only the runtime dependencies needed to load and run the pretrained models.
+
+If you want to fine-tune or pretrain SPECTRE, install the matching extra:
+
+```bash
+pip install "spectre-fm[training]"
+```
+
+If you only need the evaluation stack, install:
+
+```bash
+pip install "spectre-fm[eval]"
+```
+
+If training on GDS-enabled systems is required, install the CUDA 12 specific extra:
+
+```bash
+pip install "spectre-fm[gds-cuda12]"  # with training stack: "spectre-fm[training,gds-cuda12]"
+```
+
+**Note that** `gds-cuda12` is only compatible with CUDA 12.x environments.
+
+To install everything at once, use:
+
+```bash
+pip install "spectre-fm[all]"
 ```
 
 or install the latest updates directly from GitHub:

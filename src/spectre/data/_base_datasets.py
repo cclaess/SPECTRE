@@ -4,30 +4,85 @@ import pickle
 import shutil
 import tempfile
 from typing import Any
-from copy import deepcopy
 from pathlib import Path
+from copy import deepcopy
 
 import torch
 import numpy as np
-import monai.data as data
-from monai.utils import look_up_option, convert_to_tensor
+
+SUPPORTED_PICKLE_MOD = {"pickle": pickle}
+_MONAI_IMPORT_ERROR = None
+_CUPY_IMPORT_ERROR = None
+_KVIKIO_IMPORT_ERROR = None
+
+try:
+    import monai
+except ImportError as e:
+    monai = None  # type: ignore
+    _MONAI_IMPORT_ERROR = e
 
 try:
     import cupy as cp
+except ImportError as e:
+    cp = None  # type: ignore
+    _CUPY_IMPORT_ERROR = e
+
+try:
     import kvikio.numpy as kvikio_numpy
-except ImportError:
-    cp = None
-    kvikio_numpy = None
+except ImportError as e:
+    kvikio_numpy = None  # type: ignore
+    _KVIKIO_IMPORT_ERROR = e
 
 
-SUPPORTED_PICKLE_MOD = {"pickle": pickle}
+def _require_monai():
+    if monai is None:
+        raise ImportError(
+            "MONAI is required for this functionality. "
+            "Please install it with `pip install monai`."
+        ) from _MONAI_IMPORT_ERROR
 
 
-class PersistentDataset(data.PersistentDataset):
+def _require_gds_dependencies():
+    _require_monai()
+
+    if cp is None:
+        raise ImportError(
+            "cupy is required for this functionality. "
+            "Please install it with the appropriate CUDA build."
+        ) from _CUPY_IMPORT_ERROR
+
+    if kvikio_numpy is None:
+        raise ImportError(
+            "kvikio is required for this functionality. "
+            "Please install it with `pip install kvikio`."
+        ) from _KVIKIO_IMPORT_ERROR
+
+
+if monai is not None:
+    _BaseDataset = monai.data.Dataset
+    _BasePersistentDataset = monai.data.PersistentDataset
+    _BaseGDSDataset = monai.data.GDSDataset
+else:
+    _BaseDataset = object
+    _BasePersistentDataset = object
+    _BaseGDSDataset = object
+
+
+class Dataset(_BaseDataset):
+    """
+    Base dataset class for SPECTRE datasets.
+    """
+    def __init__(self, *args, **kwargs):
+        _require_monai()
+        super().__init__(*args, **kwargs)
+
+
+class PersistentDataset(_BasePersistentDataset):
     """
     Overwrite MONAI's PersistentDataset to support PyTorch 2.6.
     """
     def __init__(self, *args, pickle_protocol=pickle.HIGHEST_PROTOCOL, **kwargs):
+        _require_monai()
         super().__init__(*args, pickle_protocol=pickle_protocol, **kwargs)
     
     def _cachecheck(self, item_transformed):
@@ -91,7 +146,7 @@ class PersistentDataset(data.PersistentDataset):
                 torch.save(
                     obj=_item_transformed,
                     f=temp_hash_file,
-                    pickle_module=look_up_option(self.pickle_module, SUPPORTED_PICKLE_MOD),
+                    pickle_module=monai.utils.look_up_option(self.pickle_module, SUPPORTED_PICKLE_MOD),
                     pickle_protocol=self.pickle_protocol,
                 )
                 if temp_hash_file.is_file() and not hashfile.is_file():
@@ -106,12 +161,13 @@ class PersistentDataset(data.PersistentDataset):
         return _item_transformed
 
 
-class GDSDataset(data.GDSDataset):
+class GDSDataset(_BaseGDSDataset):
     """
     Overwrite MONAI's GDSDataset to support PyTorch 2.6 and combined GPU/CPU data (image/text pairs)
     without breaking the GDS fast path.
     """
     def __init__(self, *args, pickle_protocol=pickle.HIGHEST_PROTOCOL, **kwargs):
+        _require_gds_dependencies()
         super().__init__(*args, pickle_protocol=pickle_protocol, **kwargs)
     
     def _cachecheck(self, item_transformed):
@@ -148,7 +204,7 @@ class GDSDataset(data.GDSDataset):
                         except FileNotFoundError:
                             continue  # non-tensor key handled by sidecar
                         item[k] = kvikio_numpy.fromfile(f"{hashfile}-{k}", dtype=meta_k["dtype"], like=cp.empty(()))
-                        item[k] = convert_to_tensor(item[k].reshape(meta_k["shape"]), device=f"cuda:{self.device}")
+                        item[k] = monai.utils.convert_to_tensor(item[k].reshape(meta_k["shape"]), device=f"cuda:{self.device}")
                         item[f"{k}_meta_dict"] = meta_k
 
                     sidecar_path = f"{hashfile}-aux"
@@ -162,7 +218,7 @@ class GDSDataset(data.GDSDataset):
                 elif isinstance(item_transformed, (np.ndarray, torch.Tensor)):
                     _meta = self._load_meta_cache(meta_hash_file_name=f"{hashfile.name}-meta")
                     _data = kvikio_numpy.fromfile(f"{hashfile}", dtype=_meta["dtype"], like=cp.empty(()))
-                    _data = convert_to_tensor(_data.reshape(_meta["shape"]), device=f"cuda:{self.device}")
+                    _data = monai.utils.convert_to_tensor(_data.reshape(_meta["shape"]), device=f"cuda:{self.device}")
                     filtered_keys = list(filter(lambda key: key not in ["dtype", "shape"], _meta.keys()))
                     if bool(filtered_keys):
                         return (_data, _meta)
@@ -175,7 +231,7 @@ class GDSDataset(data.GDSDataset):
                             item_k = kvikio_numpy.fromfile(
                                 f"{hashfile}-{k}-{i}", dtype=meta_i_k["dtype"], like=cp.empty(())
                             )
-                            item_k = convert_to_tensor(item[i].reshape(meta_i_k["shape"]), device=f"cuda:{self.device}")
+                            item_k = monai.utils.convert_to_tensor(item[i].reshape(meta_i_k["shape"]), device=f"cuda:{self.device}")
                             item[i].update({k: item_k, f"{k}_meta_dict": meta_i_k})
                     return item
 
@@ -221,7 +277,7 @@ class GDSDataset(data.GDSDataset):
                 torch.save(
                     obj=aux_dict,
                     f=temp_hash_file,
-                    pickle_module=look_up_option(self.pickle_module, SUPPORTED_PICKLE_MOD),
+                    pickle_module=monai.utils.look_up_option(self.pickle_module, SUPPORTED_PICKLE_MOD),
                     pickle_protocol=self.pickle_protocol,
                 )
                 if temp_hash_file.is_file() and not sidecar_hashfile.is_file():

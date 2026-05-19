@@ -2,9 +2,19 @@ import os
 from pathlib import Path
 from typing import Callable, Dict, List
 
-from monai.data import Dataset
+from spectre.data._base_datasets import (
+    Dataset,
+    PersistentDataset, 
+    GDSDataset,
+)
 
-from spectre.data._base_datasets import PersistentDataset, GDSDataset
+_PANDAS_IMPORT_ERROR = None
+try:
+    import pandas as pd
+except ImportError as e:
+    pd = None  # type: ignore
+    _PANDAS_IMPORT_ERROR = e
+
 
 def _initialize_dataset(
     data_dir: str,
@@ -20,7 +30,11 @@ def _initialize_dataset(
         image_paths = image_paths[:n_keep]
 
     if include_reports:
-        import pandas as pd
+        if _PANDAS_IMPORT_ERROR is not None:
+            raise ImportError(
+                "Pandas is required to include reports in the dataset but not installed. "
+                "Please install Pandas to use this feature."
+            ) from _PANDAS_IMPORT_ERROR
         text_path = os.path.join(Path(data_dir), 'dataset', "radiology_text_reports", f"{subset}_reports.xlsx" )
         reports = pd.read_excel(text_path)
         if subset == "train":

@@ -1,22 +1,21 @@
 from typing import Tuple
 
 import torch
-from monai.transforms import (
-    Compose,
-    LoadImaged,
-    EnsureChannelFirstd,
-    ScaleIntensityRanged,
-    Orientationd,
-    Spacingd,
-    ResizeWithPadOrCropd,
-    EnsureTyped,
-    RandSpatialCropd,
-    RandFlipd,
-    GridPatchd,
-    SelectItemsd,
-)
+
+MONAI_IMPORT_ERROR = None
+try:
+    import monai.transforms as transforms
+except ImportError as e:
+    transforms = None  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 from spectre.transforms import RandomReportTransformd
+
+
+if transforms is not None:
+    Compose = transforms.Compose
+else:
+    Compose = object  # type: ignore
 
 
 class SigLIPTransform(Compose):
@@ -32,6 +31,11 @@ class SigLIPTransform(Compose):
         dtype: str = "float32",
         use_gds: bool = False,
     ):
+        if MONAI_IMPORT_ERROR is not None:
+            raise ImportError(
+                "MONAI is required to use SigLIPTransform but not installed. "
+                "Please install MONAI to use this transform."
+            ) from MONAI_IMPORT_ERROR
 
         assert dtype in ["float16", "float32"], \
             "dtype must be either 'float16' or 'float32'"
@@ -42,12 +46,12 @@ class SigLIPTransform(Compose):
         )
 
         super().__init__([
-            LoadImaged(keys=("image",)),
-            EnsureChannelFirstd(
+            transforms.LoadImaged(keys=("image",)),
+            transforms.EnsureChannelFirstd(
                 keys=("image",), 
                 channel_dim="no_channel"
             ),
-            ScaleIntensityRanged(
+            transforms.ScaleIntensityRanged(
                 keys=("image",), 
                 a_min=-1000, 
                 a_max=1000, 
@@ -55,30 +59,30 @@ class SigLIPTransform(Compose):
                 b_max=1.0, 
                 clip=True
             ),
-            Orientationd(keys=("image",), axcodes="RAS"),
-            Spacingd(
+            transforms.Orientationd(keys=("image",), axcodes="RAS"),
+            transforms.Spacingd(
                 keys=("image",), 
                 pixdim=image_pixdim, 
                 mode=("bilinear",)
             ),
-            ResizeWithPadOrCropd(
+            transforms.ResizeWithPadOrCropd(
                 keys=("image",), 
                 spatial_size=base_crop_size
             ),
-            EnsureTyped(
+            transforms.EnsureTyped(
                 keys=("image",), 
                 dtype=getattr(torch, dtype), 
                 device=device
             ),
-            RandSpatialCropd(
+            transforms.RandSpatialCropd(
                 keys=("image",),
                 roi_size=image_size,
                 random_size=False,
             ),
-            RandFlipd(keys=("image",), spatial_axis=0, prob=0.5),
-            RandFlipd(keys=("image",), spatial_axis=1, prob=0.5),
-            RandFlipd(keys=("image",), spatial_axis=2, prob=0.5),
-            GridPatchd(
+            transforms.RandFlipd(keys=("image",), spatial_axis=0, prob=0.5),
+            transforms.RandFlipd(keys=("image",), spatial_axis=1, prob=0.5),
+            transforms.RandFlipd(keys=("image",), spatial_axis=2, prob=0.5),
+            transforms.GridPatchd(
                 keys=("image",), 
                 patch_size=sliding_window_size, 
                 overlap=0.0, 
@@ -89,7 +93,7 @@ class SigLIPTransform(Compose):
                 keep_original_prob=keep_original_prob,
                 drop_prob=drop_prob,
             ),
-            SelectItemsd(
+            transforms.SelectItemsd(
                 keys=("image", "report"),
             ),
         ])

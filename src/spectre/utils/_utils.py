@@ -3,14 +3,25 @@ from typing import Iterable
 from itertools import repeat
 
 import torch
-import monai
 import numpy as np
 
+MONAI_IMPORT_ERROR = None
+try:
+    import monai
+except ImportError as e:
+    monai = None  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 def fix_random_seeds(seed: int = 31):
     """ 
     Fix random seeds.
     """
+    if MONAI_IMPORT_ERROR is not None:
+        raise ImportError(
+            "MONAI is required to use fix_random_seeds but not installed. "
+            "Please install MONAI to use this function."
+        ) from MONAI_IMPORT_ERROR
+
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
