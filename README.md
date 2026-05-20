@@ -1,3 +1,5 @@
+📢 [2026-05-20] The pretrained SPECTRE model can now be loaded directly through the `transformers` library, no separate SPECTRE package installation required. Check below for details and usage examples.
+
 📢 [2026-04-10] SPECTRE is now an official baseline for the [**CVPR 2026 Workshop Competition: Foundation Models for General CT Image Diagnosis**](https://www.codabench.org/competitions/12650/)! See `experiments/cvpr26_fm_for_ct_diag_task_1` for scripts and additional details.  
 
 📢 [2026-02-21] SPECTRE has been accepted for presentation at **CVPR 2026** (Denver, Colorado, USA)!  
@@ -12,8 +14,8 @@
   <a href="https://pypi.org/project/spectre-fm/"><img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/spectre-fm?style=flat-square&cacheSeconds=0" /></a>
   <a href="https://pypi.org/project/spectre-fm/"><img alt="Downloads per Month" src="https://img.shields.io/pypi/dm/spectre-fm?style=flat-square&label=downloads&cacheSeconds=0" /></a>
   <a href="https://github.com/cclaess/SPECTRE/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/cclaess/SPECTRE?style=flat-square&cacheSeconds=0" /></a>
-  <a href="https://huggingface.co/cclaess/SPECTRE"><img alt="Model weights" src="https://img.shields.io/badge/models-Hugging%20Face-yellow?style=flat-square&cacheSeconds=0" /></a>
-  <a href="https://arxiv.org/abs/2511.17209"><img alt="Paper" src="https://img.shields.io/badge/paper-arXiv-b31b1b?style=flat-square&cacheSeconds=0" /></a>
+  <a href="https://huggingface.co/cclaess/SPECTRE-Large"><img alt="Model weights" src="https://img.shields.io/badge/model-Hugging%20Face-yellow?style=flat-square&cacheSeconds=0" /></a>
+  <a href="https://arxiv.org/abs/2511.17209"><img alt="Preprint" src="https://img.shields.io/badge/preprint-arXiv-b31b1b?style=flat-square&cacheSeconds=0" /></a>
 </p>
 
 <p align="center">
@@ -27,14 +29,25 @@ SPECTRE has been trained on a large cohort of **open-source CT scans** of the **
 This repository provides pretrained SPECTRE models together with tools for fine-tuning and evaluation.
 
 ## 🧠 Pretrained Models
-The pretrained SPECTRE model can easily be imported as follows:
+The pretrained SPECTRE model can easily be imported using the `transformers` library
+
+```python
+from transformers import AutoModel
+model = AutoModel.from_pretrained('cclaess/SPECTRE-Large', trust_remote_code=True)
+```
+
+or by using the `spectre-fm` package as follows:
 
 ```python
 from spectre import SpectreImageFeatureExtractor, MODEL_CONFIGS
-import torch
-
 config = MODEL_CONFIGS['spectre-large-pretrained']
 model = SpectreImageFeatureExtractor.from_config(config)
+```
+
+A simple forward pass would look like:
+```python
+import torch
+
 model.eval()
 
 # Dummy input: (batch, crops, channels, height, width, depth)

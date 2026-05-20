@@ -1,0 +1,13 @@
+license: cc-by-nc-sa-4.0
+language:
+- en
+tags:
+- medical-imaging
+- ct-scan
+- 3d
+- vision-transformer
+- self-supervised-learning
+- foundation-model
+- radiology
+library_name: transformers
+pipeline_tag: feature-extraction
