@@ -189,3 +189,12 @@ wandb/
 
 # VS Code
 .vscode/
+
+# Huggingface
+hf_export/spectre/
+hf_export/imgs/
+hf_export/model.safetensors
+hf_export/config.json
+hf_export/README.md
+hf_export/LICENSE
+hf_export/LICENSE_MODELS
