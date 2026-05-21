@@ -134,7 +134,7 @@ class FeatureVisionTransformer(nn.Module):
             self.patch_drop = nn.Identity()
         self.norm_pre = norm_layer(embed_dim) if pre_norm else nn.Identity()
 
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
+        dpr = [drop_path_rate * i / (depth - 1) if depth > 1 else 0.0 for i in range(depth)]  # stochastic depth decay rule
         self.blocks = nn.Sequential(*[
             block_fn(
                 dim=embed_dim,
@@ -177,19 +177,20 @@ class FeatureVisionTransformer(nn.Module):
         self.init_weights()
 
     def init_weights(self) -> None:
-        if self.pos_embed is not None:
+        if self.pos_embed is not None and not self.pos_embed.is_meta:
             nn.init.trunc_normal_(self.pos_embed, std=.02)
-        if self.cls_token is not None:
+        if self.cls_token is not None and not self.cls_token.is_meta:
             nn.init.normal_(self.cls_token, std=1e-6)
-        if self.reg_token is not None:
+        if self.reg_token is not None and not self.reg_token.is_meta:
             nn.init.normal_(self.reg_token, std=1e-6)
         self.apply(self._init_weights)
 
     def _init_weights(self, m: nn.Module) -> None:
         # this fn left here for compat with downstream users
         if isinstance(m, nn.Linear):
-            nn.init.trunc_normal_(m.weight, std=.02)
-            if m.bias is not None:
+            if not m.weight.is_meta:
+                nn.init.trunc_normal_(m.weight, std=.02)
+            if m.bias is not None and not m.bias.is_meta:
                 nn.init.zeros_(m.bias)
 
     @torch.jit.ignore

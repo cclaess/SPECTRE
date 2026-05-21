@@ -1,11 +1,22 @@
 from copy import deepcopy
 from typing import Any, Mapping, Hashable
 
-from monai.config import KeysCollection
-from monai.transforms import MapTransform, Randomizable
+MONAI_IMPORT_ERROR = None
+try:
+    from monai.config import KeysCollection
+    from monai.transforms import MapTransform, Randomizable
+except ImportError as e:
+    KeysCollection = Any  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 
-class RandomReportTransformd(Randomizable, MapTransform):
+if MONAI_IMPORT_ERROR is None:
+    _BaseClass = type("_BaseClass", (Randomizable, MapTransform), {})
+else:
+    _BaseClass = object
+
+
+class RandomReportTransformd(_BaseClass):
     def __init__(
         self,
         keys: KeysCollection,
@@ -14,6 +25,12 @@ class RandomReportTransformd(Randomizable, MapTransform):
         drop_prob=0.3,
         allow_missing_keys: bool = False,
     ):
+        if MONAI_IMPORT_ERROR is not None:
+            raise ImportError(
+                "MONAI is required to use RandomReportTransformd but not installed. "
+                "Please install MONAI to use this transform."
+            ) from MONAI_IMPORT_ERROR
+        
         assert all(str(key) in ["findings", "impressions", "icd10"] for key in keys), \
             "keys must be one of ['findings', 'impressions', 'icd10']"
         
@@ -89,90 +106,3 @@ class RandomReportTransformd(Randomizable, MapTransform):
 
         ret["report"] = f"{findings}{impressions}{icd10}"
         return ret
-
-
-# class GenerateReportTransform(Randomizable, MapTransform):
-#     def __init__(
-#         self,
-#         keys: KeysCollection,
-#         max_num_icd10=20,
-#         likelihood_original=0.5,
-#         drop_chance=0.3,
-#         allow_missing_keys: bool = False,
-#     ):
-#         super().__init__(keys, allow_missing_keys)
-#         self.max_num_icd10 = max_num_icd10
-#         self.likelihood_original = likelihood_original
-#         self.drop_chance = drop_chance
-
-#         # Random states (purely indices/flags)
-#         self.drop_findings = False
-#         self.drop_icd10 = False
-#         self.finding_idx = None
-#         self.impression_idx = None
-#         self.icd10_indices = []
-
-#     def randomize(self, data):
-#         findings = data.get("findings", [])
-#         impressions = data.get("impressions", [])
-#         icd10_codes = data.get("icd10", [])
-
-#         if isinstance(icd10_codes, str):
-#             icd10_codes = icd10_codes.split(";")
-#         if not isinstance(icd10_codes, list):
-#             icd10_codes = []
-
-#         self.drop_findings = self.R.random() < self.drop_chance
-#         self.drop_icd10 = self.R.random() < self.drop_chance
-#         self.finding_idx = None
-#         self.impression_idx = None
-#         self.icd10_indices = []
-
-#         if not self.drop_findings and findings:
-#             num_elements = len(findings)
-#             if num_elements == 1:
-#                 self.finding_idx = 0
-#             else:
-#                 weights = [self.likelihood_original] + [(1 - self.likelihood_original) / (num_elements - 1)] * (num_elements - 1)
-#                 self.finding_idx = int(self.R.choice(np.arange(num_elements), p=weights))
-
-#         if impressions:
-#             num_elements = len(impressions)
-#             if num_elements == 1:
-#                 self.impression_idx = 0
-#             else:
-#                 weights = [self.likelihood_original] + [(1 - self.likelihood_original) / (num_elements - 1)] * (num_elements - 1)
-#                 self.impression_idx = int(self.R.choice(np.arange(num_elements), p=weights))
-
-#         if not self.drop_icd10 and icd10_codes:
-#             num_codes = min(self.max_num_icd10, len(icd10_codes))
-#             self.icd10_indices = self.R.choice(len(icd10_codes), size=num_codes, replace=False).tolist()
-
-#     def __call__(self, data):
-#         self.randomize(data)
-
-#         findings = data.get("findings", [])
-#         impressions = data.get("impressions", [])
-#         icd10_codes = data.get("icd10", [])
-
-#         if isinstance(icd10_codes, str):
-#             icd10_codes = icd10_codes.split(";")
-#         if not isinstance(icd10_codes, list):
-#             icd10_codes = []
-
-#         report = ""
-
-#         if self.finding_idx is not None and self.finding_idx < len(findings):
-#             finding = findings[self.finding_idx].replace("Impressions", "").replace("impressions", "")
-#             report += f"Findings: {finding}\n"
-
-#         if self.impression_idx is not None and self.impression_idx < len(impressions):
-#             impression = impressions[self.impression_idx]
-#             report += f"Impressions: {impression}\n"
-
-#         if self.icd10_indices:
-#             selected_icd10 = [icd10_codes[i] for i in self.icd10_indices if i < len(icd10_codes)]
-#             report += f"ICD10: {'; '.join(selected_icd10)}\n"
-
-#         data["report"] = report
-#         return data

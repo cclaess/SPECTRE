@@ -2,33 +2,29 @@ from copy import deepcopy
 from typing import Tuple, Mapping, Hashable, Any, List
 
 import torch
-from monai.config import KeysCollection
-from monai.transforms import (
-    Compose,
-    LoadImaged,
-    EnsureChannelFirstd,
-    ScaleIntensityRanged,
-    Orientationd,
-    Spacingd,
-    CenterSpatialCropd,
-    SpatialPadd,
-    EnsureTyped,
-    RandSpatialCropSamplesd,
-    SelectItemsd,
-    RandSpatialCropSamples,
-    RandFlip,
-    OneOf,
-    RandGaussianSharpen,
-    RandGaussianSmooth,
-    RandGaussianNoise,
-    RandAdjustContrast,
-    Resize,
-    MapTransform,
-    Randomizable,
-    LazyTransform,
-)
+
+MONAI_IMPORT_ERROR = None
+try:
+    import monai.transforms as transforms
+    from monai.config import KeysCollection
+except ImportError as e:
+    transforms = None  # type: ignore
+    KeysCollection = Any  # type: ignore
+    MONAI_IMPORT_ERROR = e
 
 from spectre.transforms import RandScaleIntensityRange
+
+
+if transforms is not None:
+    Compose = transforms.Compose
+    _BaseClass = type("_BaseClass", (
+        transforms.Randomizable,
+        transforms.MapTransform,
+        transforms.LazyTransform,
+    ), {})
+else:
+    Compose = object  # type: ignore
+    _BaseClass = object  # type: ignore
 
 
 class DINOTransform(Compose):
@@ -42,6 +38,12 @@ class DINOTransform(Compose):
         dtype: str = "float32",
         use_gds: bool = False,
     ):
+        if MONAI_IMPORT_ERROR is not None:
+            raise ImportError(
+                "MONAI is required to use DINOTransform but not installed. "
+                "Please install MONAI to use this transform."
+            ) from MONAI_IMPORT_ERROR
+        
         assert dtype in ["float16", "float32"], \
             "dtype must be either 'float16' or 'float32'"
 
@@ -51,12 +53,12 @@ class DINOTransform(Compose):
         )
 
         super().__init__([
-            LoadImaged(keys=("image",)),
-            EnsureChannelFirstd(
+            transforms.LoadImaged(keys=("image",)),
+            transforms.EnsureChannelFirstd(
                 keys=("image",), 
                 channel_dim="no_channel"
             ),
-            ScaleIntensityRanged(
+            transforms.ScaleIntensityRanged(
                 keys=("image",),
                 a_min=-1000,
                 a_max=1000,
@@ -64,26 +66,26 @@ class DINOTransform(Compose):
                 b_max=1.0,
                 clip=True,
             ),
-            Orientationd(keys=("image",), axcodes="RAS"),
-            Spacingd(
+            transforms.Orientationd(keys=("image",), axcodes="RAS"),
+            transforms.Spacingd(
                 keys=("image",), 
                 pixdim=(0.5, 0.5, 1.0),  # comply with newest scanners
                 mode=("bilinear",),
             ),
-            CenterSpatialCropd(
+            transforms.CenterSpatialCropd(
                 keys=("image",), 
                 roi_size=(512, 512, 384),
             ),
-            SpatialPadd(
+            transforms.SpatialPadd(
                 keys=("image",),
                 spatial_size=base_crop_size,
             ),
-            EnsureTyped(
+            transforms.EnsureTyped(
                 keys=("image",), 
                 dtype=getattr(torch, dtype), 
                 device=device,
             ),
-            RandSpatialCropSamplesd(
+            transforms.RandSpatialCropSamplesd(
                 keys=("image",),
                 num_samples=num_base_patches,
                 roi_size=base_crop_size,
@@ -99,13 +101,13 @@ class DINOTransform(Compose):
                 num_local_views=num_local_views,
                 dtype=dtype,
             ),
-            SelectItemsd(
+            transforms.SelectItemsd(
                 keys=("image_global_views", "image_local_views"),
             ),
         ])
 
 
-class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
+class DINORandomCropTransformd(_BaseClass):
     def __init__(
         self,
         keys: KeysCollection,
@@ -117,14 +119,20 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
         dtype: str = "float32",
         lazy: bool = False,
     ) -> None:
-        MapTransform.__init__(self, keys)
-        LazyTransform.__init__(self, lazy)
+        if MONAI_IMPORT_ERROR is not None:
+            raise ImportError(
+                "MONAI is required to use DINORandomCropTransformd but not installed. "
+                "Please install MONAI to use this transform."
+            ) from MONAI_IMPORT_ERROR
+        
+        transforms.MapTransform.__init__(self, keys)
+        transforms.LazyTransform.__init__(self, lazy)
         self.global_views_size = global_views_size
         self.local_views_size = local_views_size
         self.local_views_scale = local_views_scale
         self.num_local_views = num_local_views
 
-        self.cropper_global = RandSpatialCropSamples(
+        self.cropper_global = transforms.RandSpatialCropSamples(
             roi_size=tuple(int(local_views_scale[1] * sz) for sz in base_crop_size),
             num_samples=2,
             max_roi_size=base_crop_size,
@@ -132,7 +140,7 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             random_size=True,
             lazy=lazy,
         )
-        self.cropper_local = RandSpatialCropSamples(
+        self.cropper_local = transforms.RandSpatialCropSamples(
             roi_size=tuple(int(self.local_views_scale[0] * sz) for sz in base_crop_size),
             num_samples=num_local_views,
             max_roi_size=tuple(int(self.local_views_scale[1] * sz) for sz in base_crop_size),
@@ -141,14 +149,14 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             lazy=lazy,
         )
 
-        self.resize_global = Resize(
+        self.resize_global = transforms.Resize(
             spatial_size=global_views_size,
             mode="trilinear",
             dtype=getattr(torch, dtype),  # worst case 0.1-0.3% error for fp16
             anti_aliasing=True,  # downsample ratios up to 2
             lazy=lazy,
         )
-        self.resize_local = Resize(
+        self.resize_local = transforms.Resize(
             spatial_size=local_views_size,
             mode="trilinear",
             dtype=getattr(torch, dtype),  # worst case 0.1-0.3% error for fp16
@@ -156,23 +164,23 @@ class DINORandomCropTransformd(Randomizable, MapTransform, LazyTransform):
             lazy=lazy,
         )
 
-        self.augmentor = Compose([
-            RandFlip(spatial_axis=0, prob=0.5),
-            RandFlip(spatial_axis=1, prob=0.5),
-            RandFlip(spatial_axis=2, prob=0.5),
-            OneOf([
-                RandGaussianSharpen(
+        self.augmentor = transforms.Compose([
+            transforms.RandFlip(spatial_axis=0, prob=0.5),
+            transforms.RandFlip(spatial_axis=1, prob=0.5),
+            transforms.RandFlip(spatial_axis=2, prob=0.5),
+            transforms.OneOf([
+                transforms.RandGaussianSharpen(
                     sigma1_x=(1.5, 2.5), sigma1_y=(1.5, 2.5), sigma1_z=(0.75, 1.25),
                     sigma2_x=(0.5, 1.0), sigma2_y=(0.5, 1.0), sigma2_z=(0.25, 0.5),
                     prob=0.25,
                 ),
-                RandGaussianSmooth(
+                transforms.RandGaussianSmooth(
                     sigma_x=(1.5, 2.5), sigma_y=(1.5, 2.5), sigma_z=(0.75, 1.25),
                     prob=0.25,
                 ),
             ]),
-            RandAdjustContrast(gamma=(0.9, 1.1), prob=0.25),
-            RandGaussianNoise(std=0.1, sample_std=True, prob=0.25),
+            transforms.RandAdjustContrast(gamma=(0.9, 1.1), prob=0.25),
+            transforms.RandGaussianNoise(std=0.1, sample_std=True, prob=0.25),
             RandScaleIntensityRange(
                 a_min=(0.0, 0.4),  # [0.0 * 2000 - 1000, 0.4 * 2000 - 1000] = [-1000, -200]
                 a_max=(0.6, 1.0),  # [0.6 * 2000 - 1000, 1.0 * 2000 - 1000] = [200, 1000]

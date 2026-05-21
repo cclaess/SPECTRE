@@ -1,9 +1,14 @@
 import os
 import math
 
-from omegaconf import OmegaConf
-
 from spectre.utils import _utils, distributed
+
+OMEGACONF_IMPORT_ERROR = None
+try:
+    from omegaconf import OmegaConf
+except ImportError as e:
+    OmegaConf = None  # type: ignore
+    OMEGACONF_IMPORT_ERROR = e
 
 
 def apply_scaling_rules_to_cfg(cfg):
@@ -38,6 +43,12 @@ def apply_scaling_rules_to_cfg(cfg):
 
 
 def write_config(cfg, output_dir, name="config.yaml"):
+    if OMEGACONF_IMPORT_ERROR is not None:
+        raise ImportError(
+            "OmegaConf is required to use write_config but not installed. "
+            "Please install OmegaConf to use this function."
+        ) from OMEGACONF_IMPORT_ERROR
+    
     saved_cfg_path = os.path.join(output_dir, name)
     with open(saved_cfg_path, "w") as f:
         OmegaConf.save(config=cfg, f=f)
@@ -45,6 +56,12 @@ def write_config(cfg, output_dir, name="config.yaml"):
 
 
 def get_cfg_from_args(args, default_config):
+    if OMEGACONF_IMPORT_ERROR is not None:
+        raise ImportError(
+            "OmegaConf is required to use get_cfg_from_args but not installed. "
+            "Please install OmegaConf to use this function."
+        ) from OMEGACONF_IMPORT_ERROR
+    
     args.output_dir = os.path.abspath(args.output_dir)
     args.opts = [] if args.opts is None else args.opts
     args.opts += [f"train.output_dir={args.output_dir}"]
