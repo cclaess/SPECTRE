@@ -4,6 +4,8 @@ The published spectre-large weights are ~1 GB, so these tests patch `from_pretra
 back a tiny model. They cover the plumbing (file discovery, saving, skipping, exit codes), not
 embedding quality.
 """
+import csv
+
 import numpy as np
 import pytest
 import torch
@@ -39,6 +41,7 @@ def small_model(monkeypatch):
 
 
 def write_scan(path, shape=(256, 128, 64), seed=0):
+    path.parent.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
     data = (rng.random(shape) * 3000 - 1200).astype(np.float32)
     nib.save(nib.Nifti1Image(data, np.diag([0.7, 0.7, 1.5, 1.0])), str(path))
@@ -92,6 +95,99 @@ def test_embed_directory_of_unequal_scans(tmp_path, small_model):
     with np.load(out / "a.npz") as fa, np.load(out / "c.npz") as fc:
         assert list(fa["grid_size"]) == [2, 2, 2]
         assert list(fc["grid_size"]) == [1, 1, 1]
+
+
+def test_nested_scans_mirror_the_input_structure(tmp_path, small_model):
+    """Same-named scans in different subfolders must not overwrite each other.
+
+    Both are planned before either is written, so the "already exists" skip does not catch this;
+    without mirroring, the second silently clobbered the first.
+    """
+    scans = tmp_path / "scans"
+    (scans / "patient_a" / "study_1").mkdir(parents=True)
+    (scans / "patient_b" / "study_1").mkdir(parents=True)
+    write_scan(scans / "patient_a" / "study_1" / "scan.nii.gz", seed=1)
+    write_scan(scans / "patient_b" / "study_1" / "scan.nii.gz", seed=2)
+    write_scan(scans / "top_level.nii.gz", seed=3)
+    out = tmp_path / "out"
+
+    assert main(["embed", str(scans), "-o", str(out), "--device", "cpu", "-q"]) == 0
+
+    assert (out / "patient_a" / "study_1" / "scan.npz").exists()
+    assert (out / "patient_b" / "study_1" / "scan.npz").exists()
+    assert (out / "top_level.npz").exists()
+
+    # Three inputs must yield three distinct outputs, not two.
+    assert len(list(out.rglob("*.npz"))) == 3
+
+    # And the two same-named scans must hold their own embeddings.
+    with np.load(out / "patient_a" / "study_1" / "scan.npz") as a, \
+         np.load(out / "patient_b" / "study_1" / "scan.npz") as b:
+        assert not np.allclose(a["cls"], b["cls"]), "one scan overwrote the other"
+
+
+def test_nested_source_is_recorded_in_the_manifest(tmp_path, small_model):
+    scans = tmp_path / "scans"
+    (scans / "sub").mkdir(parents=True)
+    write_scan(scans / "sub" / "scan.nii.gz")
+    out = tmp_path / "out"
+
+    main(["embed", str(scans), "-o", str(out), "--device", "cpu", "-q"])
+
+    rows = list(csv.DictReader((out / "manifest.csv").open()))
+    assert len(rows) == 1
+    assert rows[0]["relative_output"] in (r"sub\scan.npz", "sub/scan.npz")
+    assert "sub" in rows[0]["source"]
+
+
+def test_single_file_input_is_not_nested(tmp_path, small_model):
+    """Pointing at one file should put its output straight in the output folder."""
+    scan = write_scan(tmp_path / "deep" / "nested" / "scan.nii.gz")
+    (tmp_path / "out").mkdir()
+    assert main(["embed", str(scan), "-o", str(tmp_path / "out"), "--device", "cpu", "-q"]) == 0
+    assert (tmp_path / "out" / "scan.npz").exists()
+    assert not (tmp_path / "out" / "deep").exists()
+
+
+def test_nested_skip_and_overwrite_still_work(tmp_path, small_model, capsys):
+    scans = tmp_path / "scans"
+    (scans / "sub").mkdir(parents=True)
+    write_scan(scans / "sub" / "scan.nii.gz")
+    out = tmp_path / "out"
+
+    main(["embed", str(scans), "-o", str(out), "--device", "cpu", "-q"])
+    mtime = (out / "sub" / "scan.npz").stat().st_mtime_ns
+
+    main(["embed", str(scans), "-o", str(out), "--device", "cpu"])
+    captured = capsys.readouterr().out
+    assert "skipping" in captured
+    assert "sub" in captured, "the skip message should name the scan's subfolder"
+    assert (out / "sub" / "scan.npz").stat().st_mtime_ns == mtime
+
+
+def test_colliding_outputs_are_refused(tmp_path, small_model, capsys):
+    """Mirroring cannot separate a.nii and a.nii.gz side by side; fail rather than clobber."""
+    scans = tmp_path / "scans"
+    scans.mkdir()
+    write_scan(scans / "scan.nii.gz")
+    write_scan(scans / "scan.nii")
+
+    code = main(["embed", str(scans), "-o", str(tmp_path / "out"), "--device", "cpu", "-q"])
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "would both be written to" in err
+
+
+def test_no_recursive_ignores_subfolders(tmp_path, small_model):
+    scans = tmp_path / "scans"
+    (scans / "sub").mkdir(parents=True)
+    write_scan(scans / "top.nii.gz")
+    write_scan(scans / "sub" / "deep.nii.gz")
+    out = tmp_path / "out"
+
+    assert main(["embed", str(scans), "-o", str(out), "--no-recursive", "--device", "cpu", "-q"]) == 0
+    assert (out / "top.npz").exists()
+    assert not (out / "sub" / "deep.npz").exists()
 
 
 def test_embed_backbone_only(tmp_path, small_model):

@@ -1,3 +1,5 @@
+📢 [2026-07-17] SPECTRE now ships a command-line tool: point `spectre embed` at a `.nii`/`.nii.gz` file or a folder of them to get embeddings without writing any Python. Check below for details and usage examples.
+
 📢 [2026-05-20] The pretrained SPECTRE model can now be loaded directly through the `transformers` library, no separate SPECTRE package installation required. Check below for details and usage examples.
 
 📢 [2026-04-10] SPECTRE is now an official baseline for the [**CVPR 2026 Workshop Competition: Foundation Models for General CT Image Diagnosis**](https://www.codabench.org/competitions/12650/)! See `experiments/cvpr26_fm_for_ct_diag_task_1` for scripts and additional details.  

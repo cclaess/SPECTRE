@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     embed.add_argument("input", type=Path, help="a .nii/.nii.gz file, or a folder containing them")
     embed.add_argument(
         "-o", "--output", type=Path, default=Path("./spectre_embeddings"),
-        help="folder to write embeddings to",
+        help="folder to write embeddings to; subfolders of the input are mirrored inside it",
     )
     embed.add_argument("-m", "--model", default="spectre-large", help="which SPECTRE model to use")
     embed.add_argument(
@@ -138,6 +138,62 @@ def _resolve_device(requested: str):
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _input_root(scan_input: Path) -> Path:
+    """The directory paths are made relative to when mirroring the input tree."""
+    return scan_input if scan_input.is_dir() else scan_input.parent
+
+
+def _display(scan: Path, scan_input: Path) -> str:
+    """A scan's path as the user thinks of it: relative to what they pointed us at."""
+    try:
+        return str(scan.relative_to(_input_root(scan_input)))
+    except ValueError:
+        return scan.name
+
+
+def _output_stem(scan: Path) -> str:
+    """`scan.nii.gz` -> `scan` (Path.stem alone would leave `scan.nii`)."""
+    if scan.name.endswith(".nii.gz"):
+        return scan.name[: -len(".nii.gz")]
+    return scan.stem
+
+
+def _plan_outputs(scans, scan_input: Path, output: Path, suffix: str):
+    """Map each scan to its output file, mirroring the input folder structure.
+
+    Embedding a tree of scans must not flatten it: two scans named `scan.nii.gz` in different
+    subfolders would otherwise land on the same output path and one would silently overwrite the
+    other. Both are planned before either is written, so the "already exists" check does not
+    catch it.
+
+    Raises:
+        ValueError: if two scans still map to the same output, which mirroring alone cannot fix
+            (e.g. `a.nii` and `a.nii.gz` side by side).
+    """
+    root = _input_root(scan_input)
+    planned = []
+    seen = {}
+
+    for scan in scans:
+        try:
+            relative = scan.relative_to(root)
+        except ValueError:  # not under root; fall back to a flat name
+            relative = Path(scan.name)
+        destination = output / relative.parent / f"{_output_stem(scan)}{suffix}"
+
+        resolved = destination.resolve()
+        if resolved in seen:
+            raise ValueError(
+                f"{_display(scan, scan_input)} and {_display(seen[resolved], scan_input)} would "
+                f"both be written to {destination}. Rename one of them, or embed them in "
+                f"separate runs."
+            )
+        seen[resolved] = scan
+        planned.append((scan, destination))
+
+    return planned
+
+
 def _save(path: Path, payload: dict, fmt: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if fmt == "pt":
@@ -192,12 +248,16 @@ def _cmd_embed(args: argparse.Namespace) -> int:
     args.output.mkdir(parents=True, exist_ok=True)
     suffix = ".pt" if args.format == "pt" else ".npz"
 
+    try:
+        planned = _plan_outputs(scans, args.input, args.output, suffix)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USAGE
+
     todo = []
-    for scan in scans:
-        stem = scan.name[: -len(".nii.gz")] if scan.name.endswith(".nii.gz") else scan.stem
-        destination = args.output / f"{stem}{suffix}"
+    for scan, destination in planned:
         if destination.exists() and not args.overwrite:
-            log(f"skipping {scan.name} (already embedded; pass --overwrite to redo)")
+            log(f"skipping {_display(scan, args.input)} (already embedded; pass --overwrite to redo)")
             continue
         todo.append((scan, destination))
 
@@ -250,11 +310,11 @@ def _cmd_embed(args: argparse.Namespace) -> int:
                         pad_short_axes=not args.no_pad_short_axes,
                     )
                 if any("smaller than one crop" in str(w.message) for w in caught):
-                    padded.append(scan.name)
+                    padded.append(_display(scan, args.input))
                 loaded.append((crops, grid))
                 loaded_paths.append((scan, destination, index))
             except Exception as e:  # one bad scan must not kill a long run
-                print(f"error: {scan.name}: {e}", file=sys.stderr)
+                print(f"error: {_display(scan, args.input)}: {e}", file=sys.stderr)
                 failures.append((scan, e))
 
         if not loaded:
@@ -268,17 +328,20 @@ def _cmd_embed(args: argparse.Namespace) -> int:
             )
         except Exception as e:
             for scan, _, _ in loaded_paths:
-                print(f"error: {scan.name}: {e}", file=sys.stderr)
+                print(f"error: {_display(scan, args.input)}: {e}", file=sys.stderr)
                 failures.append((scan, e))
             continue
 
         for (scan, destination, index), (crops, grid), features in zip(loaded_paths, loaded, outputs):
             payload = _payload_for(features, grid, scan, args.model, args.backbone_only)
             _save(destination, payload, args.format)
-            log(f"[{index}/{len(todo)}] {scan.name} -> {destination.name} ({crops.shape[0]} crops)")
+            relative_out = destination.relative_to(args.output)
+            log(f"[{index}/{len(todo)}] {_display(scan, args.input)} -> {relative_out} "
+                f"({crops.shape[0]} crops)")
             manifest_rows.append({
                 "source": str(scan),
                 "output": str(destination),
+                "relative_output": str(relative_out),
                 "crops": crops.shape[0],
                 "grid_size": "x".join(str(g) for g in grid),
             })
@@ -304,7 +367,7 @@ def _cmd_embed(args: argparse.Namespace) -> int:
     if failures:
         print(f"\n{len(failures)} scan(s) failed:", file=sys.stderr)
         for scan, error in failures:
-            print(f"  {scan.name}: {error}", file=sys.stderr)
+            print(f"  {_display(scan, args.input)}: {error}", file=sys.stderr)
         return EXIT_PARTIAL_FAILURE
 
     return EXIT_OK
