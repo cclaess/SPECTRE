@@ -17,7 +17,11 @@ class SpectreModel(PreTrainedModel):
         model = AutoModel.from_pretrained("cclaess/SPECTRE-Large", trust_remote_code=True)
 
         # A raw CT scan (C, H, W, D) in Hounsfield Units - windowed internally.
-        features = model(scan).last_hidden_state
+        features = model(scan)                       # -> Tensor
+        features = model(scan, return_dict=True).last_hidden_state
+
+    Note `return_dict` defaults to False here rather than following `config.use_return_dict`;
+    that is the behaviour the published model has always had, so it stays.
 
     This wrapper takes a single tensor, because `BaseModelOutput` holds a tensor. For batches of
     differently-sized scans - where all crops share one backbone pass - use the underlying
