@@ -52,12 +52,41 @@ class SpectreModel(PreTrainedModel):
         pixel_values: torch.Tensor,
         grid_size=None,
         return_dict=False,
+        max_crops_per_forward=None,
+        output_hidden_states=None,
+        output_attentions=None,
         **kwargs,
     ):
-        """Embed one or more CT scans. See `SpectreImageFeatureExtractor.forward` for the shapes
-        accepted; `grid_size` is required only for input that is already windowed into crops.
+        """Embed one or more CT scans.
+
+        See `SpectreImageFeatureExtractor.forward` for the shapes accepted; `grid_size` is
+        required only for input that is already windowed into crops, and
+        `max_crops_per_forward` caps how many crops go through the backbone at once.
+
+        Args are named explicitly rather than splatted into the extractor: `**kwargs` here is a
+        sink for the kwargs `transformers` callers pass out of habit (`use_cache` and friends),
+        which are meaningless for a feature extractor. Forwarding them would turn a harmless
+        call into a TypeError.
         """
-        outputs = self.model(pixel_values, grid_size=grid_size, **kwargs)
+        if output_hidden_states:
+            raise NotImplementedError(
+                "SPECTRE does not expose intermediate hidden states through this wrapper. It "
+                "embeds each crop with a backbone and then attends over the grid of crop "
+                "embeddings, so there is no single stack of layers whose outputs share a shape. "
+                "For per-crop backbone layers, call "
+                "model.model.backbone.forward_intermediates(crops) directly."
+            )
+        if output_attentions:
+            raise NotImplementedError(
+                "SPECTRE does not expose attention weights. Its attention uses a fused kernel "
+                "(torch.nn.functional.scaled_dot_product_attention), which does not return them."
+            )
+
+        outputs = self.model(
+            pixel_values,
+            grid_size=grid_size,
+            max_crops_per_forward=max_crops_per_forward,
+        )
 
         if not return_dict:
             return outputs
