@@ -149,6 +149,7 @@ def resample(
     """
     _require_nibabel()
     try:
+        from monai.data import MetaTensor
         from monai.transforms import Spacing
     except ImportError as e:
         raise ImportError(
@@ -158,8 +159,11 @@ def resample(
     if len(spacing) != 3:
         raise ValueError(f"spacing must have 3 elements, got {tuple(spacing)}.")
 
+    # Spacing reads the source spacing from the input's affine, so the affine has to travel on the
+    # tensor as a MetaTensor - it is not a call argument (older MONAI took an `affine=` kwarg).
+    volume = MetaTensor(x, affine=torch.as_tensor(meta.affine, dtype=torch.float64))
     spacer = Spacing(pixdim=tuple(float(s) for s in spacing), mode=mode)
-    resampled = spacer(x, affine=torch.as_tensor(meta.affine, dtype=torch.float64))
+    resampled = spacer(volume)
     affine = getattr(resampled, "affine", meta.affine)
     resampled = resampled.as_tensor() if hasattr(resampled, "as_tensor") else torch.as_tensor(resampled)
 
