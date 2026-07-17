@@ -5,7 +5,7 @@ import math
 import warnings
 from enum import Enum
 from typing import Dict, List, Tuple, Optional, Union
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 import torch
 import torch.nn as nn
@@ -68,8 +68,12 @@ def load_checkpoint(
                 f"Expected https://huggingface.co/<owner>/<repo>/resolve/<revision>/<filename>."
             )
         repo_id = '/'.join(parts[:2])
+        revision = None
         filename = parts[-1]
-        local_path = hf_hub_download(repo_id=repo_id, filename=filename)
+        if len(parts) >= 5 and parts[2] in ('resolve', 'blob'):
+            revision = unquote(parts[3])
+            filename = '/'.join(parts[4:])
+        local_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
         return load_state_dict_from_file(local_path, map_location=map_location)
 
     if _is_url(checkpoint_path_or_url):
