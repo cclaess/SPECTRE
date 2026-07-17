@@ -1,5 +1,5 @@
 import os
-import re
+import ast
 import sys
 import shutil
 import argparse
@@ -15,9 +15,15 @@ DEST_PACKAGE = EXPORT_DIR / "spectre"
 # Map name -> True  (copy the whole file/directory)
 #          -> list  (copy only these filenames from that subdirectory)
 # Any __init__.py is automatically patched to drop imports of excluded items.
+# Anything model.py imports (directly or transitively) MUST be listed here, or the published
+# model fails at trust_remote_code import time. tests/test_hf_export_include.py enforces this,
+# and _verify_export() re-checks the copied tree before we upload anything.
+# io.py and cli.py are deliberately excluded: they need the optional [inference] dependencies.
 INCLUDE = {
     "__init__.py": True,
     "model.py": True,
+    "presets.py": True,
+    "windowing.py": True,
     "models": [
         "layers",
         "__init__.py",
@@ -32,77 +38,119 @@ INCLUDE = {
 }
 
 
-def _patch_init(init_path, keep_modules):
-    """Strip import lines for modules not in keep_modules and remove their
-    exported names from __all__, handling multi-line imports throughout."""
-    lines = init_path.read_text(encoding="utf-8").splitlines(keepends=True)
-
-    # --- Pass 1: collect names exported by excluded imports ---
-    _KEYWORDS = {"as", "True", "False", "None"}
-    excluded_names = set()
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        m_direct = re.match(r"^from \. import ([\w]+)\b", line)
-        m_from   = re.match(r"^from \.([\w]+)\b", line)
-        module = (m_direct or m_from)
-        if module and module.group(1) not in keep_modules:
-            if m_direct:
-                excluded_names.add(m_direct.group(1))
-            else:
-                after = line.partition("import")[2]
-                excluded_names.update(n for n in re.findall(r"\b([A-Za-z_]\w*)\b", after) if n not in _KEYWORDS)
-                depth = line.count("(") - line.count(")")
-                while depth > 0 and i + 1 < len(lines):
-                    i += 1
-                    excluded_names.update(n for n in re.findall(r"\b([A-Za-z_]\w*)\b", lines[i]) if n not in _KEYWORDS)
-                    depth += lines[i].count("(") - lines[i].count(")")
-        i += 1
-
-    # --- Pass 2: remove excluded import lines ---
-    result = []
-    skip = False
-    paren_depth = 0
-    for line in lines:
-        if not skip:
-            m = re.match(r"^from \.([\w]+)\b", line) or re.match(r"^from \. import ([\w]+)\b", line)
-            if m and m.group(1) not in keep_modules:
-                skip = True
-                paren_depth = line.count("(") - line.count(")")
-                if paren_depth <= 0:
-                    skip = False
-                continue
-            result.append(line)
+def _exported_modules(include=INCLUDE, prefix="spectre"):
+    """Every module path the export will contain, e.g. {'spectre.model', 'spectre.utils', ...}."""
+    modules = {prefix}
+    for name, what in include.items():
+        stem = Path(name).stem
+        if stem == "__init__":
+            continue
+        if what is True:
+            modules.add(f"{prefix}.{stem}")
+            if (SRC_PACKAGE / name).is_dir():
+                for child in (SRC_PACKAGE / name).rglob("*.py"):
+                    rel = child.relative_to(SRC_PACKAGE / name).with_suffix("")
+                    parts = [p for p in rel.parts if p != "__init__"]
+                    modules.add(".".join([prefix, stem, *parts]) if parts else f"{prefix}.{stem}")
         else:
-            paren_depth += line.count("(") - line.count(")")
-            if paren_depth <= 0:
-                skip = False
+            modules.add(f"{prefix}.{stem}")
+            modules.update(_exported_modules({f: True for f in what}, f"{prefix}.{stem}"))
+    return modules
 
-    # --- Pass 3: remove excluded names from __all__ ---
-    if excluded_names:
-        patched = []
-        in_all = False
-        bracket_depth = 0
-        for line in result:
-            if not in_all:
-                if re.match(r"^\s*__all__\s*=\s*\[", line):
-                    in_all = True
-                    bracket_depth = line.count("[") - line.count("]")
-                    if bracket_depth <= 0:
-                        in_all = False
-                patched.append(line)
-            else:
-                m = re.search(r'["\']([A-Za-z_]\w*)["\']', line)
-                if m and m.group(1) in excluded_names:
-                    pass  # drop this __all__ entry
-                else:
-                    patched.append(line)
-                bracket_depth += line.count("[") - line.count("]")
-                if bracket_depth <= 0:
-                    in_all = False
-        result = patched
 
-    init_path.write_text("".join(result), encoding="utf-8")
+def _spectre_imports(path):
+    """Every `spectre.*` module a file imports, with the line it happens on."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            if node.module.split(".")[0] == "spectre":
+                yield node.module, node.lineno
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] == "spectre":
+                    yield alias.name, node.lineno
+
+
+def _verify_export(dest=None):
+    """Fail loudly if anything we publish imports a `spectre.*` module we did not copy.
+
+    Covers both the vendored package and the remote-code files beside it, which import spectre
+    too (configuration_spectre pulls in spectre.presets and spectre.windowing). Without this the
+    omission only surfaces as a ModuleNotFoundError for whoever runs
+    AutoModel.from_pretrained(..., trust_remote_code=True) against the published repo.
+    """
+    dest = Path(dest) if dest is not None else DEST_PACKAGE
+    available = {
+        ".".join(["spectre", *[p for p in path.relative_to(dest).with_suffix("").parts if p != "__init__"]])
+        for path in dest.rglob("*.py")
+    }
+    available.add("spectre")
+
+    to_check = list(dest.rglob("*.py"))
+    to_check += [p for p in dest.parent.glob("*.py")]  # configuration_spectre.py, modeling_spectre.py
+
+    problems = []
+    for path in sorted(to_check):
+        for module, lineno in _spectre_imports(path):
+            if module not in available:
+                problems.append(f"{path.relative_to(dest.parent)}:{lineno} imports {module}")
+
+    if problems:
+        raise RuntimeError(
+            "The export publishes files that import spectre modules it does not copy. Add them "
+            "to INCLUDE in scripts/export_hf.py:\n  " + "\n  ".join(problems)
+        )
+    return available
+
+
+def _imported_submodule(node):
+    """The submodule a relative import pulls in, or None if it isn't one.
+
+    Handles both spellings: `from .models import X` -> "models", and
+    `from . import models` -> "models".
+    """
+    if not isinstance(node, ast.ImportFrom) or node.level < 1:
+        return None
+    if node.module:                       # from .models import X
+        return node.module.split(".")[0]
+    if len(node.names) == 1:              # from . import models
+        return node.names[0].name
+    return None
+
+
+def _patch_init(init_path, keep_modules):
+    """Drop imports of excluded submodules from an __init__.py, and their names from __all__.
+
+    Parsed rather than pattern-matched, so multi-line and parenthesised imports, indentation and
+    aliases all work without special cases. Comments are not preserved (ast.unparse drops them),
+    which is fine for a generated file - docstrings survive.
+    """
+    tree = ast.parse(init_path.read_text(encoding="utf-8"))
+
+    dropped_names = set()
+    kept_body = []
+    for node in tree.body:
+        module = _imported_submodule(node)
+        if module is not None and module not in keep_modules:
+            # `from . import models` binds "models"; `from .x import a as b` binds "b".
+            dropped_names.update(alias.asname or alias.name for alias in node.names)
+            continue
+        kept_body.append(node)
+    tree.body = kept_body
+
+    if dropped_names:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+                continue
+            if isinstance(node.value, (ast.List, ast.Tuple)):
+                node.value.elts = [
+                    e for e in node.value.elts
+                    if not (isinstance(e, ast.Constant) and e.value in dropped_names)
+                ]
+
+    init_path.write_text(ast.unparse(tree) + "\n", encoding="utf-8")
 
 
 def _copy_selective(src, dst, include):
@@ -142,6 +190,12 @@ def get_args():
         type=str,
         default="cclaess/SPECTRE-Large",
         help="HuggingFace repo ID (default: cclaess/SPECTRE-Large)",
+    )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        default="spectre-large",
+        help="SPECTRE preset to export; must have published weights (default: spectre-large)",
     )
     parser.add_argument(
         "--hf-token",
@@ -194,43 +248,34 @@ def main(args):
     _copy_selective(SRC_PACKAGE, DEST_PACKAGE, INCLUDE)
     print(f"✓ Exported spectre package to {DEST_PACKAGE}")
 
+    print("Verifying exported imports resolve...")
+    _verify_export()
+    print("✓ All spectre imports in the exported package resolve")
+
     # Prepend export dir to sys.path
     sys.path.insert(0, str(EXPORT_DIR))
 
-    from spectre import SpectreImageFeatureExtractor, MODEL_CONFIGS
+    from spectre import SpectreImageFeatureExtractor
     from configuration_spectre import SpectreConfig
     from modeling_spectre import SpectreModel
 
     SpectreConfig.register_for_auto_class()
     SpectreModel.register_for_auto_class("AutoModel")
 
-    print("Building model configuration...")
-    config = SpectreConfig(
-        backbone_name="vit_large_patch16_128",
-        backbone_kwargs={
-            "num_classes": 0,
-            "global_pool": "",
-            "pos_embed": "rope",
-            "rope_kwargs": {"base": 1000.0},
-            "init_values": 1.0,
-        },
-        feature_combiner_name="feat_vit_large",
-        feature_combiner_kwargs={
-            "num_classes": 0,
-            "global_pool": "",
-            "pos_embed": "rope",
-            "rope_kwargs": {"base": 100.0},
-            "init_values": 1.0,
-        },
-    )
-
     print("Loading base model weights...")
-    base = SpectreImageFeatureExtractor.from_config(MODEL_CONFIGS["spectre-large-pretrained"])
+    base = SpectreImageFeatureExtractor.from_pretrained(args.preset, verbose=True)
+
+    print("Building model configuration...")
+    # Nothing about the architecture is spelled out here: SpectreConfig resolves it from
+    # spectre.presets, which is the only place those values live.
+    config = SpectreConfig(preset=args.preset, crop_size=base.crop_size)
 
     print("Creating HuggingFace model...")
     hf_model = SpectreModel(config)
 
-    hf_model.model.load_state_dict(base.state_dict())
+    # strict=True is the desync guard: if the config resolved a different architecture than the
+    # preset built, the key sets differ and this raises instead of shipping a broken model.
+    hf_model.model.load_state_dict(base.state_dict(), strict=True)
 
     print("Saving model and config...")
     # save_pretrained copies the modeling file into the save directory; saving

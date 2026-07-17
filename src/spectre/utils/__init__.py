@@ -30,6 +30,8 @@ from .distributed import (
 from .lora import add_lora_adapters
 from .masking import random_block_mask
 from .modeling import (
+    load_checkpoint,
+    load_pretrained_into,
     deactivate_requires_grad_and_to_eval,
     activate_requires_grad_and_to_train,
     update_momentum,
@@ -86,6 +88,8 @@ __all__ = [
     "init_distributed",
     "add_lora_adapters",
     "random_block_mask",
+    "load_checkpoint",
+    "load_pretrained_into",
     "deactivate_requires_grad_and_to_eval",
     "activate_requires_grad_and_to_train",
     "update_momentum",
