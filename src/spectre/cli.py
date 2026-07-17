@@ -265,7 +265,11 @@ def _cmd_embed(args: argparse.Namespace) -> int:
         log("nothing to do: every scan already has an embedding")
         return EXIT_OK
 
-    device = _resolve_device(args.device)
+    try:
+        device = _resolve_device(args.device)
+    except Exception as e:
+        print(f"error: invalid --device {args.device!r}: {e}", file=sys.stderr)
+        return EXIT_USAGE
     log(f"loading {args.model} on {device} ...")
     try:
         model = SpectreImageFeatureExtractor.from_pretrained(
