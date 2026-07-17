@@ -1,13 +1,134 @@
 from __future__ import annotations
 
+import os
 import math
+import warnings
 from enum import Enum
-from typing import List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional, Union
+from urllib.parse import urlparse, unquote
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from huggingface_hub import hf_hub_download, load_state_dict_from_file
+
+
+def _is_url(path: Union[str, os.PathLike]) -> bool:
+    try:
+        return urlparse(str(path)).scheme in ('http', 'https')
+    except Exception:
+        return False
+
+
+def _is_hf_url(path: Union[str, os.PathLike]) -> bool:
+    try:
+        return 'huggingface.co' in urlparse(str(path)).netloc
+    except Exception:
+        return False
+
+
+def _torch_load(path: Union[str, os.PathLike], map_location) -> Dict[str, torch.Tensor]:
+    """Load a checkpoint, preferring the safe unpickler and falling back if the file needs it."""
+    try:
+        return torch.load(path, map_location=map_location, weights_only=True)
+    except Exception:
+        warnings.warn(
+            f"Could not load {path} with weights_only=True, retrying with weights_only=False. "
+            f"This executes arbitrary code from the checkpoint - only do this for files you trust.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return torch.load(path, map_location=map_location, weights_only=False)
+
+
+def load_checkpoint(
+    checkpoint_path_or_url: Union[str, os.PathLike],
+    map_location: Union[str, torch.device] = 'cpu',
+    verbose: bool = False,
+) -> Dict[str, torch.Tensor]:
+    """Load a state dict from a local path, a Hugging Face URL, or a plain URL.
+
+    Args:
+        checkpoint_path_or_url: Local file, a `https://huggingface.co/<repo>/resolve/<rev>/<file>`
+            URL, or any other http(s) URL.
+        map_location: Passed through to the underlying loader.
+        verbose: Print where the checkpoint is coming from.
+    Returns:
+        The loaded state dict.
+    """
+    if _is_hf_url(checkpoint_path_or_url):
+        if verbose:
+            print(f"Downloading pretrained weights from Hugging Face URL: {checkpoint_path_or_url}")
+        parsed = urlparse(str(checkpoint_path_or_url))
+        parts = parsed.path.strip('/').split('/')
+        if len(parts) < 2:
+            raise ValueError(
+                f"Cannot parse a Hugging Face repo id out of {checkpoint_path_or_url!r}. "
+                f"Expected https://huggingface.co/<owner>/<repo>/resolve/<revision>/<filename>."
+            )
+        repo_id = '/'.join(parts[:2])
+        revision = None
+        filename = parts[-1]
+        if len(parts) >= 5 and parts[2] in ('resolve', 'blob'):
+            revision = unquote(parts[3])
+            filename = '/'.join(parts[4:])
+        local_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
+        return load_state_dict_from_file(local_path, map_location=map_location)
+
+    if _is_url(checkpoint_path_or_url):
+        if verbose:
+            print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
+        try:
+            return torch.hub.load_state_dict_from_url(
+                str(checkpoint_path_or_url), map_location=map_location,
+                weights_only=True, progress=verbose,
+            )
+        except Exception:
+            warnings.warn(
+                f"Could not load {checkpoint_path_or_url} with weights_only=True, retrying with "
+                f"weights_only=False. This executes arbitrary code from the checkpoint - only do "
+                f"this for URLs you trust.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return torch.hub.load_state_dict_from_url(
+                str(checkpoint_path_or_url), map_location=map_location,
+                weights_only=False, progress=verbose,
+            )
+
+    local_path = os.fspath(checkpoint_path_or_url)
+    if not os.path.exists(local_path):
+        raise FileNotFoundError(f"Checkpoint file not found: {local_path}")
+    if verbose:
+        print(f"Loading checkpoint from local path: {local_path}")
+    return _torch_load(local_path, map_location)
+
+
+def load_pretrained_into(
+    model: nn.Module,
+    checkpoint_path_or_url: Union[str, os.PathLike],
+    strict: bool = True,
+    verbose: bool = False,
+) -> nn.Module:
+    """Load `checkpoint_path_or_url` into `model` in place, with an actionable error on mismatch.
+
+    With `strict=False` a mismatched architecture silently leaves layers randomly initialised,
+    so the default here is `strict=True`.
+    """
+    state_dict = load_checkpoint(checkpoint_path_or_url, map_location='cpu', verbose=verbose)
+    try:
+        msg = model.load_state_dict(state_dict, strict=strict)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Checkpoint {checkpoint_path_or_url} does not match {type(model).__name__}. This "
+            f"usually means the architecture kwargs differ from the ones the checkpoint was "
+            f"trained with. Pass strict=False to load the matching subset anyway (the rest stays "
+            f"randomly initialised).\n\n{e}"
+        ) from e
+    if verbose:
+        print(f"Loaded pretrained weights with msg: {msg}")
+    return model
 
 
 def deactivate_requires_grad_and_to_eval(model: nn.Module):
