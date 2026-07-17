@@ -22,7 +22,7 @@ from . import transforms
 from . import ssl
 from . import utils
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Cris Claessens"
 __email__ = "c.h.b.claessens@tue.nl"
 
