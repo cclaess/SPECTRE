@@ -1,13 +1,12 @@
 import os
 import math
-from urllib.parse import urlparse
 from typing import Type, Any, Tuple, List, Optional, Union, Dict
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spectre.utils import to_ntuple
+from spectre.utils import to_ntuple, load_pretrained_into
 
 
 def get_padding(kernel_size: int, stride: int, dilation: int = 1) -> int:
@@ -590,35 +589,13 @@ class ResNet(nn.Module):
             cls,
             checkpoint_path_or_url: Union[str, os.PathLike],
             verbose: bool = True,
+            strict: bool = True,
             **kwargs
     ) -> 'ResNet':
         """Load pretrained model weights from a local path or a URL."""
         model = cls(**kwargs)
-
-        def _is_url(path: str) -> bool:
-            try:
-                parsed = urlparse(str(path))
-                return parsed.scheme in ('http', 'https')
-            except Exception:
-                return False
-
-        if _is_url(checkpoint_path_or_url):
-            if verbose:
-                print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
-            state_dict = torch.hub.load_state_dict_from_url(
-                checkpoint_path_or_url, map_location='cpu', weights_only=False, progress=verbose)
-        else:
-            local_path = os.fspath(checkpoint_path_or_url)
-            if not os.path.exists(local_path):
-                raise FileNotFoundError(f"Checkpoint file not found: {local_path}")
-        if verbose:
-            print(f"Loading checkpoint from local path: {local_path}")
-            state_dict = torch.load(local_path, map_location='cpu', weights_only=False)
-
-        msg = model.load_state_dict(state_dict, strict=False)
-        if verbose:
-            print(f"Loaded pretrained weights with msg: {msg}")
-        return model
+        return load_pretrained_into(
+            model, checkpoint_path_or_url, strict=strict, verbose=verbose)
 
     
 

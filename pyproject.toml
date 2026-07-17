@@ -36,6 +36,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Everything needed to read CT scans off disk and run the `spectre` CLI. The model itself, and
+# windowing an in-memory tensor, need nothing beyond the base dependencies.
+inference = [
+	"nibabel",
+	"monai",
+]
+
 training = [
 	"wandb",
 	"monai",
@@ -69,7 +76,10 @@ gds-cuda12 = [
 	"kvikio",
 ]
 
-all = ["spectre-fm[training,eval,gds-cuda12]"]
+all = ["spectre-fm[training,eval,inference,gds-cuda12]"]
+
+[project.scripts]
+spectre = "spectre.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/cclaess/SPECTRE"

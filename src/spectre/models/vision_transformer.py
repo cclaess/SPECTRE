@@ -1,6 +1,5 @@
 import os
 from functools import partial
-from urllib.parse import urlparse
 from typing import (
     Tuple, Union, Callable, Literal, 
     Optional, Type, Set, List, Dict, Any,
@@ -10,17 +9,17 @@ import torch
 import torch.nn as nn
 from timm.layers import PatchDropout, AttentionPoolLatent
 from timm.models.vision_transformer import LayerScale, DropPath, Mlp
-from huggingface_hub import hf_hub_download, load_state_dict_from_file
 
 from spectre.models.layers import (
-    PatchEmbed, 
-    Attention, 
+    PatchEmbed,
+    Attention,
     RotaryPositionEmbedding,
 )
 from spectre.utils import (
-    resample_abs_pos_embed, 
-    feature_take_indices, 
+    resample_abs_pos_embed,
+    feature_take_indices,
     global_pool_nlc,
+    load_pretrained_into,
 )
 
 
@@ -591,53 +590,13 @@ class VisionTransformer(nn.Module):
             cls,
             checkpoint_path_or_url: Union[str, os.PathLike],
             verbose: bool = True,
+            strict: bool = True,
             **kwargs
     ) -> 'VisionTransformer':
         """Load pretrained model weights from a local path or a URL."""
         model = cls(**kwargs)
-
-        def _is_url(path: str) -> bool:
-            try:
-                parsed = urlparse(str(path))
-                return parsed.scheme in ('http', 'https')
-            except Exception:
-                return False
-            
-        def _is_hf_url(path: str) -> bool:
-            try:
-                parsed = urlparse(str(path))
-                return 'huggingface.co' in parsed.netloc
-            except Exception:
-                return False
-
-        if _is_hf_url(checkpoint_path_or_url):
-            if verbose:
-                print(f"Downloading pretrained weights from Hugging Face URL: {checkpoint_path_or_url}")
-            # Extract repo_id and filename from the URL
-            parsed = urlparse(checkpoint_path_or_url)
-            parts = parsed.path.strip('/').split('/')
-            repo_id = '/'.join(parts[:2])  # e.g., 'cclaess/SPECTRE'
-            filename = parts[-1]           # e.g., 'spectre_backbone_vit_large_patch16_128.pt'
-
-            local_path = hf_hub_download(repo_id=repo_id, filename=filename)
-            state_dict = load_state_dict_from_file(local_path, map_location='cpu')
-        elif _is_url(checkpoint_path_or_url):
-            if verbose:
-                print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
-            state_dict = torch.hub.load_state_dict_from_url(
-                checkpoint_path_or_url, map_location='cpu', weights_only=False, progress=verbose)
-        else:
-            local_path = os.fspath(checkpoint_path_or_url)
-            if not os.path.exists(local_path):
-                raise FileNotFoundError(f"Checkpoint file not found: {local_path}")
-        if verbose:
-            print(f"Loading checkpoint from local path: {local_path}")
-            state_dict = torch.load(local_path, map_location='cpu', weights_only=False)
-
-        msg = model.load_state_dict(state_dict, strict=False)
-        if verbose:
-            print(f"Loaded pretrained weights with msg: {msg}")
-        return model
+        return load_pretrained_into(
+            model, checkpoint_path_or_url, strict=strict, verbose=verbose)
 
 
 def vit_tiny_patch16_128(

@@ -1,16 +1,19 @@
 import os
 import math
 from functools import partial
-from urllib.parse import urlparse
 from typing import Union, Callable, Literal, Optional, Type, Set, Tuple
 
 import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Mlp
 from timm.layers import PatchDropout, AttentionPoolLatent
-from huggingface_hub import hf_hub_download, load_state_dict_from_file
 
-from spectre.utils import  global_pool_nlc, to_3tuple, resample_abs_pos_embed
+from spectre.utils import (
+    global_pool_nlc,
+    to_3tuple,
+    resample_abs_pos_embed,
+    load_pretrained_into,
+)
 from spectre.models.vision_transformer import Block
 from spectre.models.layers import RotaryPositionEmbedding
 
@@ -124,6 +127,11 @@ class FeatureVisionTransformer(nn.Module):
                 num_heads=num_heads,
                 **rope_kwargs,
             )
+            self.requires_per_sample_rope = any([
+                self.rope.shift_coords is not None,
+                self.rope.jitter_coords is not None,
+                self.rope.rescale_coords is not None,
+            ])
         self.pos_drop = nn.Dropout(p=pos_drop_rate)
         if patch_drop_rate > 0:
             self.patch_drop = PatchDropout(
@@ -318,53 +326,13 @@ class FeatureVisionTransformer(nn.Module):
             cls,
             checkpoint_path_or_url: Union[str, os.PathLike],
             verbose: bool = True,
+            strict: bool = True,
             **kwargs
     ) -> 'FeatureVisionTransformer':
         """Load pretrained model weights from a local path or a URL."""
         model = cls(**kwargs)
-
-        def _is_url(path: str) -> bool:
-            try:
-                parsed = urlparse(str(path))
-                return parsed.scheme in ('http', 'https')
-            except Exception:
-                return False
-            
-        def _is_hf_url(path: str) -> bool:
-            try:
-                parsed = urlparse(str(path))
-                return 'huggingface.co' in parsed.netloc
-            except Exception:
-                return False
-
-        if _is_hf_url(checkpoint_path_or_url):
-            if verbose:
-                print(f"Downloading pretrained weights from Hugging Face URL: {checkpoint_path_or_url}")
-            # Extract repo_id and filename from the URL
-            parsed = urlparse(checkpoint_path_or_url)
-            parts = parsed.path.strip('/').split('/')
-            repo_id = '/'.join(parts[:2])  # e.g., 'cclaess/SPECTRE'
-            filename = parts[-1]           # e.g., 'spectre_backbone_vit_large_patch16_128.pt'
-
-            local_path = hf_hub_download(repo_id=repo_id, filename=filename)
-            state_dict = load_state_dict_from_file(local_path, map_location='cpu')
-        elif _is_url(checkpoint_path_or_url):
-            if verbose:
-                print(f"Downloading pretrained weights from URL: {checkpoint_path_or_url}")
-            state_dict = torch.hub.load_state_dict_from_url(
-                checkpoint_path_or_url, map_location='cpu', weights_only=False, progress=verbose)
-        else:
-            local_path = os.fspath(checkpoint_path_or_url)
-            if not os.path.exists(local_path):
-                raise FileNotFoundError(f"Checkpoint file not found: {local_path}")
-        if verbose:
-            print(f"Loading checkpoint from local path: {local_path}")
-            state_dict = torch.load(local_path, map_location='cpu', weights_only=False)
-
-        msg = model.load_state_dict(state_dict, strict=False)
-        if verbose:
-            print(f"Loaded pretrained weights with msg: {msg}")
-        return model
+        return load_pretrained_into(
+            model, checkpoint_path_or_url, strict=strict, verbose=verbose)
 
 
 def feat_vit_tiny(
