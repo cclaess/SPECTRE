@@ -122,7 +122,10 @@ def load_ct(
     # get_fdata (not dataobj) applies scl_slope/scl_inter, which is what makes the values HU.
     # float32 rather than the float64 default, which would double peak memory on a large scan.
     array = image.get_fdata(dtype=np.float32)
-    volume = torch.from_numpy(array).to(dtype).unsqueeze(0)
+    # Reorienting a non-RAS scan flips axes, leaving a view with negative strides that
+    # torch.from_numpy cannot take; ascontiguousarray both fixes that and is a no-op when the
+    # scan was already RAS.
+    volume = torch.from_numpy(np.ascontiguousarray(array)).to(dtype).unsqueeze(0)
 
     zooms = image.header.get_zooms()[:3]
     meta = CTMeta(
